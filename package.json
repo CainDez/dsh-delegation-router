@@ -1,0 +1,80 @@
+{
+  "name": "dsh-delegation-router",
+  "version": "0.8.1",
+  "private": true,
+  "repository": { "type": "git", "url": "git+https://github.com/CainDez/dsh-delegation-router.git" },
+  "homepage": "https://github.com/CainDez/dsh-delegation-router#readme",
+  "bugs": { "url": "https://github.com/CainDez/dsh-delegation-router/issues" },
+  "keywords": ["deepseek-harness", "dsh-plugin", "subagent", "delegation", "model-routing"],
+  "description": "DSH delegation presets with parent-model inheritance, exact reasoning-effort validation and autosaved settings; preserves host authorization and the parent model.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.15"
+  },
+  "exports": {
+    ".": "./src/plugin.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./assets/icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/*.js",
+    "examples/presets.json",
+    "examples/ui-glm.json",
+    "locale",
+    "assets",
+    "cordis.patch.yml",
+    "client.js",
+    "README.md",
+    "VALIDATION.md",
+    "INSTALLATION.md",
+    "UI_CONFIGURATION.md",
+    "COMPATIBILITY.md",
+    "SECURITY.md",
+    "PUBLIC_RELEASE_CHECKLIST.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node scripts/check.js",
+    "pack": "npm pack --ignore-scripts"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cosmokit": "~1.9.0",
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/schemastery": "~3.19.0",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-subagent": "0.2.2-rc.1",
+    "zod": "4.4.3"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cosmokit": { "optional": true },
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-subagent": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["@deepseek-ai/dsh-api-remotes", "@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-client-ui-slots", "@deepseek-ai/dsh-client-locale"]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+# Safe default: no live configuration or team-domain replacement.
+- insert:
+    - id: delegation-router
+      name: dsh-delegation-router
+      config: {}

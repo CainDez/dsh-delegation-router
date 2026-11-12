@@ -1,0 +1,17 @@
+{
+  "ui": {
+    "schemaVersion": 2,
+    "enabled": false,
+    "presets": [
+      {
+        "id": "quick",
+        "name": "快速委派",
+        "provider": "zai-coding-cn",
+        "model": "glm-5.3-flash",
+        "effort": "low",
+        "description": "简单、独立、边界明确的文本或代码任务"
+      }
+    ],
+    "defaultPreset": "quick"
+  }
+}

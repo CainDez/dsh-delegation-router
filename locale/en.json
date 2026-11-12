@@ -1,0 +1,11 @@
+{
+  "meta": {
+    "title": "Delegation Router",
+    "description": "Low/High/Max delegation presets with parent-model inheritance, exact effort validation and autosaved settings. Respects host authorization; never switches the parent Agent."
+  },
+  "config": {
+    "ui": "Delegation presets (canonical ui entry; host authorization still applies)",
+    "policy": "policy (deprecated read alias; canonical editor saves ui)",
+    "auditFile": "Absolute audit path, unique per running profile"
+  }
+}

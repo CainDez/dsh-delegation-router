@@ -1,0 +1,37 @@
+node_modules/
+*.tgz
+pack-receipt.json
+coverage/
+.pack-verify*/
+*.log
+*.jsonl
+*.jsonl.lock
+
+# Local credentials, profiles and configuration (examples are tracked separately).
+.env
+.env.*
+!.env.example
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+.dsh/
+
+# Local acceptance logs and installation receipts, not public release manifests.
+LIVE_ACCEPTANCE_*.json
+LIVE_ACCEPTANCE_*.md
+/release-*.json
+/SHRINK_PLAN.md
+/docs/history/
+.host-api-check-*/
+
+# Never bring private originals or backup histories into the public tree.
+*.bundle
+.git.old*/
+.git-backup*/
+backups/
+.private/
+/candidate-dir/
