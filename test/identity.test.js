@@ -66,7 +66,7 @@ function browserHost() {
 }
 
 test('published manifest, repository, exports and disabled Cordis patch use the independent identity', async () => {
-  assert.equal(manifest.name, 'dsh-delegation-router'); assert.equal(manifest.version, '0.8.1');
+  assert.equal(manifest.name, 'dsh-delegation-router'); assert.equal(manifest.version, '0.8.2');
   assert.equal(manifest.repository.url, 'git+https://github.com/CainDez/dsh-delegation-router.git');
   assert.equal(manifest.exports['.'], './src/plugin.js'); assert.equal(manifest.exports['./client'], './client.js');
   assert.deepEqual(Object.keys(manifest.exports).sort(), ['.', './client', './locale/*.json', './icon', './package.json'].sort());

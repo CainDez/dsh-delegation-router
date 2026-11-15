@@ -133,15 +133,15 @@ export class SubagentRouter {
       const beforeDispatch = () => { this.assertParent(parent,exec.signal); this.validateSelected(parent,plan); };
       beforeDispatch();
       invoked = true; const result = await this.invokeNative(args,exec,beforeDispatch);
-      if (result?.kind !== 'activation' || typeof result.subagentId !== 'string' || !result.subagentId.trim() || result.subagentId.length>500) fail('START_UNKNOWN','Native tool did not return an activation identity');
+      if (result?.kind !== 'activation' || typeof result.childId !== 'string' || !result.childId.trim() || result.childId.length>500) fail('START_UNKNOWN','Native adapter did not return a verified child Session identity');
       // Once dispatched, later parent changes cannot alter this frozen child route.
-      acceptedChildId=result.subagentId;
-      this.ledger.accept(reservation,result.subagentId);
-      this.#byChild.set(pid+'\0'+result.subagentId,{reservation,base});
-      record('accepted',{childId:result.subagentId});
-      const ended=this.#ended.get(pid+'\0'+result.subagentId);
-      if (ended) { this.#ended.delete(pid+'\0'+result.subagentId); this.settle(pid,result.subagentId,ended); }
-      return { ...result, decisionId, presetId:route.presetId, selected:{provider:options.provider,model:options.model,effort:options.reasoningEffort ?? null}, routingReason:route.reason };
+      acceptedChildId=result.childId;
+      this.ledger.accept(reservation,result.childId);
+      this.#byChild.set(pid+'\0'+result.childId,{reservation,base});
+      record('accepted',{childId:result.childId});
+      const ended=this.#ended.get(pid+'\0'+result.childId);
+      if (ended) { this.#ended.delete(pid+'\0'+result.childId); this.settle(pid,result.childId,ended); }
+      return { ...result, subagentId:result.childId, decisionId, presetId:route.presetId, selected:{provider:options.provider,model:options.model,effort:options.reasoningEffort ?? null}, routingReason:route.reason };
     } catch (error) {
       // Native errors can follow publication (e.g. post-execute failure): never blindly retry.
       if (invoked && error?.definitelyNotStarted !== true) {

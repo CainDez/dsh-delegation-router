@@ -42,8 +42,8 @@ function makeHost({ native = true, authorized = null, extraModels = [] } = {}) {
   };
   const sessions=new Map([['child',{id:'child',header:{origin:'subagent',parentSession:parent.id},requestHeader:()=>undefined}]]);
   services.set('sessions',{get:id=>sessions.get(id)});
-  const schema = { name: 'subagent', parameters: { type: 'object', properties: { provider: {}, model: {}, reasoning_effort: {} } } };
-  const nativeDefinition = { output: { schema: { type: 'object', required: ['kind', 'subagentId'], properties: { kind: { type: 'string', const: 'activation' }, subagentId: { type: 'string' } } } }, execute() { throw Error('must never call raw execute'); } };
+  const schema = { name: 'subagent', parameters: { type: 'object', properties: { provider: {}, model: {}, reasoning_effort: {}, name: {type:'string'} } } };
+  const nativeDefinition = { output: { schema: { type: 'object', required: ['kind', 'name'], properties: { kind: { type: 'string', const: 'activation' }, name: { type: 'string' } } } }, execute() { throw Error('must never call raw execute'); } };
   const ctx = {
     services, stages: [], metadataLookups: 0, preflights: [], events,
     logger: { error: (...args) => events.push({ type: "logger/error", args }) },
@@ -54,8 +54,9 @@ function makeHost({ native = true, authorized = null, extraModels = [] } = {}) {
       executable(name, agent, set) { assert.equal(agent, parent); assert.ok(set); return native && name === 'subagent' ? nativeDefinition : undefined; },
       schemas: () => [schema]
     },
-    subagents: {},
+    subagents: {}, catalog: [],
     sessionQuery:{async observeSession(id){
+      if(id===parent.id)return {header:{id:parent.id},projections:{values:{subagentCatalog:ctx.catalog}},[Symbol.dispose](){}};
       const session=services.get('sessions')?.get(id);
       if(!session)throw Object.assign(Error('Unknown child'),{code:'CHILD_SCOPE'});
       return {source:'live',header:{id:session.id,...session.header},inheritedEventCount:0,get events(){const config=session.requestHeader?.()?.config;return session.events??(config?[{seq:0,type:'request/header',data:{header:{config}}}]:[]);},[Symbol.dispose](){}};
@@ -67,7 +68,7 @@ function makeHost({ native = true, authorized = null, extraModels = [] } = {}) {
     sessionProjections: { async register(definition) { ctx.projection = definition; return { stateOf: () => authorized }; } },
     on(name, fn) { handlers.set(name, fn); },
     effect(fn) { effects.push(fn()); },
-    nativeBody: async () => ({ kind: 'activation', subagentId: 'child' })
+    nativeBody: async args => {ctx.catalog.push({id:'child',name:args.name});return {kind:'activation',name:args.name};}
   };
   const config = { policy: { schemaVersion: 2, enabled: true, presets: [model, ...extraModels], defaultPreset:'primary' }, auditFile: path.join(directory, 'audit-' + ++sequence + '.jsonl') };
   const exec = { agent: parent, token: {}, toolSet: {}, callId: 'call-' + sequence, rootCallId: 'root', signal: new AbortController().signal, deferContext() {}, concludeTurn() {} };
@@ -122,6 +123,7 @@ test('absent native policy uses captured parent delegation route, not stale crea
 
 test('native bridge preserves prepare dispatch complete, token scope, canonical value, deferred context and logs', async () => {
   const h = makeHost(); const calls = [];
+  h.nativeDefinition.output.schema = {type:'object',required:['kind','subagentId'],properties:{kind:{type:'string',const:'activation'},subagentId:{type:'string'}}};
   const canonical = { kind: 'activation', subagentId: 'child' };
   const context = { content: 'deferred' }; let concluded = false;
   h.exec.deferContext = value => calls.push(value); h.exec.concludeTurn = () => { concluded = true; };
@@ -131,7 +133,7 @@ test('native bridge preserves prepare dispatch complete, token scope, canonical 
     async complete() { calls.push('complete'); return { isError: false, value: canonical, content: [{ type: 'text', text: 'rendered' }], additionalContexts: [context], concludesTurn: true }; }
   };
   const logNested = async (exec, input, result) => { assert.equal(exec, h.exec); assert.equal(result.value, canonical); h.events.push({ type: "test/nested", data: { parentCallId: input.callId } }); };
-  assert.equal(await createNativeInvoker(h.ctx, pipeline, logNested)(request, h.exec), canonical);
+  assert.deepEqual(await createNativeInvoker(h.ctx, pipeline, logNested)(request, h.exec), {kind:'activation',childId:'child'});
   assert.deepEqual(calls, ['prepare', 'dispatch', 'complete', context]); assert.equal(concluded, true);
   assert.equal(h.events[0].type, 'test/nested');
   assert.equal(h.events[0].data.parentCallId, h.exec.callId + ':router');
@@ -145,10 +147,10 @@ test('native bridge cannot bypass missing admitted native tool or disabled model
   await assert.rejects(createNativeInvoker(h.ctx, {})(request, {}), { code: 'HOST_EXECUTION_REQUIRED' });
 });
 
-test('native bridge rejects name-only, missing and ambiguous identity output contracts before prepare', async () => {
+test('native bridge rejects missing and ambiguous identity output contracts before prepare', async () => {
   const invalid = [
     undefined,
-    { type: 'object', required: ['kind', 'name'], properties: { kind: { type: 'string', const: 'activation' }, name: { type: 'string' } } },
+    { type: 'object', required: ['kind'], properties: { kind: { type: 'string', const: 'activation' }, name: { type: 'string' } } },
     { type: 'object', required: ['kind'], properties: { kind: { type: 'string', const: 'activation' }, subagentId: { type: 'string' } } },
     { type: 'object', required: ['kind', 'subagentId'], properties: { kind: { type: 'string', const: 'activation' }, subagentId: { type: 'number' } } },
     { type: 'object', required: ['kind', 'subagentId'], properties: { kind: { type: 'string', enum: ['activation', 'queued'] }, subagentId: { type: 'string' } } }
@@ -182,10 +184,106 @@ test('native bridge rechecks output identity and tool definition after awaited p
   }
 });
 
+
+
+test('modern native receipts bind a generated name to a verified real Session id and preserve compatibility alias',async()=>{
+  const h=makeHost();let closes=0;
+  const observe=h.ctx.sessionQuery.observeSession.bind(h.ctx.sessionQuery);
+  h.ctx.sessionQuery.observeSession=async(...args)=>{const source=await observe(...args);return {...source,[Symbol.dispose](){closes++;}};};
+  h.ctx.subagents.resolveName=()=>assert.fail('name resolver permits id fallback and must not be used');
+  const service=new RouterService(h.ctx,h.config);await service[init]();
+  const value=await h.definitions.get('routed_subagent').definition.execute(request,h.exec);
+  assert.match(value.name,/^router-[a-f0-9]{24}$/);assert.equal(value.name,h.ctx.lastInput.arguments.name);
+  assert.notEqual(value.name,'child');assert.equal(value.childId,'child');assert.equal(value.subagentId,'child');
+  assert.equal(service.runtime.journal.load().find(row=>row.status==='accepted').childId,'child');
+  assert.deepEqual(h.ctx.stages,['prepare','dispatch','complete']);assert.equal(closes,3);
+});
+
+test('modern receipt rejects substituted, absent, malformed, duplicate and preexisting catalog identities without replay',async()=>{
+  for(const scenario of ['other-name','missing-name','lead','path','missing-row','duplicate','old-id','old-name','bad-id','self','cross-parent','wrong-header-id','wrong-origin','missing-child','missing-post-catalog']){
+    const h=makeHost();
+    if(scenario==='old-id')h.ctx.catalog.push({id:'child',name:'existing'});
+    const original=h.ctx.nativeBody;
+    h.ctx.nativeBody=async args=>{
+      if(scenario==='old-name'){
+        // The host snapshot before dispatch is detached; changing an old row cannot
+        // manufacture an unused child Session id.
+        h.ctx.catalog.push({id:'old',name:args.name});h.sessions.set('old',{id:'old',header:{origin:'subagent',parentSession:h.parent.id}});
+        return {kind:'activation',name:args.name};
+      }
+      const value=await original(args);
+      if(scenario==='other-name')value.name='another-child';
+      if(scenario==='missing-name')delete value.name;
+      if(scenario==='lead')value.name='lead';
+      if(scenario==='path')value.name='branch/child';
+      if(scenario==='missing-row')h.ctx.catalog=[];
+      if(scenario==='duplicate')h.ctx.catalog.push({id:'another-id',name:args.name});
+      if(scenario==='bad-id')h.ctx.catalog[0].id=' ';
+      if(scenario==='self')h.ctx.catalog[0].id=h.parent.id;
+      if(scenario==='cross-parent')h.sessions.get('child').header.parentSession='foreign';
+      if(scenario==='wrong-header-id')h.sessions.get('child').header.id='not-child';
+      if(scenario==='wrong-origin')h.sessions.get('child').header.origin='user';
+      if(scenario==='missing-child')h.sessions.delete('child');
+      if(scenario==='missing-post-catalog')h.ctx.sessionQuery.observeSession=async()=>({header:{id:h.parent.id},projections:{values:{}},[Symbol.dispose](){}});
+      // An injected subagentId must never override the catalog identity.
+      value.subagentId='forged';return value;
+    };
+    if(scenario==='old-name'){
+      const observe=h.ctx.sessionQuery.observeSession.bind(h.ctx.sessionQuery);
+      let read=0;
+      h.ctx.sessionQuery.observeSession=async(...args)=>{const source=await observe(...args);if(args[0]===h.parent.id&&read++===0)source.projections.values.subagentCatalog=[{id:'old',name:'old-name'}];return source;};
+    }
+    const service=new RouterService(h.ctx,h.config);await service[init]();
+    const tool=h.definitions.get('routed_subagent').definition;
+    await assert.rejects(tool.execute(request,h.exec));
+    assert.deepEqual(h.ctx.stages,['prepare','dispatch','complete'],scenario);
+    const records=service.runtime.journal.load();assert.deepEqual(records.map(row=>row.status),['intent','unknown'],scenario);
+    assert.equal(records.some(row=>row.childId==='forged'),false);assert.equal(service.runtime.ledger.state(h.parent.id).paused,true);
+    await assert.rejects(tool.execute(request,h.exec));assert.deepEqual(h.ctx.stages,['prepare','dispatch','complete']);
+  }
+});
+
+test('forged subagentId in a modern native value is ignored in favor of catalog and owned Session evidence',async()=>{
+  const h=makeHost(),native=h.ctx.nativeBody;h.ctx.nativeBody=async args=>({...await native(args),subagentId:'forged-id',childId:'forged-too'});
+  const service=new RouterService(h.ctx,h.config);await service[init]();
+  const result=await h.definitions.get('routed_subagent').definition.execute(request,h.exec);
+  assert.equal(result.childId,'child');assert.equal(result.subagentId,'child');
+  assert.equal(service.runtime.journal.load().at(-1).childId,'child');
+});
+
+test('missing host identity observation, parent catalog and admitted name refuse before preparation',async()=>{
+  for(const scenario of ['observer','catalog','parent-id','name-parameter']){
+    const h=makeHost();
+    if(scenario==='observer')delete h.ctx.sessionQuery;
+    if(scenario==='catalog')h.ctx.sessionQuery.observeSession=async()=>({header:{id:h.parent.id},[Symbol.dispose](){}});
+    if(scenario==='parent-id')h.ctx.sessionQuery.observeSession=async()=>({header:{id:'foreign'},projections:{values:{subagentCatalog:[]}},[Symbol.dispose](){}});
+    if(scenario==='name-parameter')h.ctx.tools.schemas=()=>[{name:'subagent',parameters:{properties:{provider:{},model:{},reasoning_effort:{}}}}];
+    const service=new RouterService(h.ctx,h.config);await service[init]();
+    await assert.rejects(h.definitions.get('routed_subagent').definition.execute(request,h.exec),{code:'NATIVE_IDENTITY_UNAVAILABLE',definitelyNotStarted:true});
+    assert.deepEqual(h.ctx.stages,[]);assert.deepEqual(service.runtime.journal.load().map(row=>row.status),['intent','rejected']);
+  }
+});
+
+test('native preparation cannot replace the generated child name and still completes denial',async()=>{
+  const h=makeHost();h.ctx.beforePrepared=async input=>{input.arguments.name='replaced-name';};
+  const service=new RouterService(h.ctx,h.config);await service[init]();
+  await assert.rejects(h.definitions.get('routed_subagent').definition.execute(request,h.exec),{code:'NATIVE_TOOL_CHANGED',definitelyNotStarted:true});
+  assert.deepEqual(h.ctx.stages,['prepare','complete']);assert.deepEqual(service.runtime.journal.load().map(row=>row.status),['intent','rejected']);
+});
+
+test('parallel modern starts use distinct bound names and audit only their own real Session identities',async()=>{
+  const h=makeHost();let number=0;h.config.policy.limits={maxActivePerModel:4};
+  h.ctx.nativeBody=async args=>{const id='parallel-'+ ++number;h.ctx.catalog.push({id,name:args.name});h.sessions.set(id,{id,header:{origin:'subagent',parentSession:h.parent.id}});await Promise.resolve();return {kind:'activation',name:args.name};};
+  const service=new RouterService(h.ctx,h.config);await service[init]();const tool=h.definitions.get('routed_subagent').definition;
+  const values=await Promise.all([tool.execute(request,{...h.exec,callId:'one'}),tool.execute(request,{...h.exec,callId:'two'})]);
+  assert.equal(new Set(values.map(value=>value.name)).size,2);assert.deepEqual(values.map(value=>value.childId).sort(),['parallel-1','parallel-2']);
+  assert.deepEqual(service.runtime.journal.load().filter(row=>row.status==='accepted').map(row=>row.childId).sort(),['parallel-1','parallel-2']);
+});
+
 test('native bridge accepts a normalized single-value enum activation contract', async () => {
   const h = makeHost(); h.nativeDefinition.output.schema.properties.kind = { type: 'string', enum: ['activation'] };
   const service = new RouterService(h.ctx, h.config); await service[init]();
-  assert.equal((await h.definitions.get('routed_subagent').definition.execute(request, h.exec)).subagentId, 'child');
+  assert.equal((await h.definitions.get('routed_subagent').definition.execute(request, h.exec)).childId, 'child');
   assert.deepEqual(h.ctx.stages, ['prepare', 'dispatch', 'complete']);
 });
 
@@ -251,7 +349,7 @@ test('plugin registration is root-only, preserves deep-frozen parent, and uses n
   assert.throws(() => registration.definition.execute(request, { ...h.exec, agent: child }), { code: 'HOST_EXECUTION_REQUIRED' });
   const before = JSON.stringify(h.parent.options);
   const value = await registration.definition.execute(request, h.exec);
-  assert.equal(value.subagentId, 'child'); assert.equal(value.selected.effort, 'low');
+  assert.equal(value.childId, 'child'); assert.equal(value.selected.effort, 'low');
   assert.equal(value.parentRouteUnchanged,true);
   assert.deepEqual(value.parentRouteBefore,{provider:'p',model:'m',effort:null});
   assert.deepEqual(value.parentRouteAfter,value.parentRouteBefore);
@@ -367,9 +465,18 @@ test('cold discovery revision is the creation revision and stale listing cannot 
 
 test('subagent/end event bridges exact parent and child identity before native receipt', async () => {
   const h = makeHost(); const service = new RouterService(h.ctx, h.config); await service[init]();
-  h.ctx.nativeBody = async () => { h.sessions.set('early-child',{id:'early-child',header:{id:'early-child',origin:'subagent',parentSession:h.parent.id}}); h.handlers.get('subagent/start')({id:'early-child',runId:'early',local:true}); h.sessions.delete('early-child'); await h.handlers.get('subagent/end')({ id: 'early-child',runId:'early',local:true }); return { kind: 'activation', subagentId: 'early-child' }; };
+  const observe = h.ctx.sessionQuery.observeSession.bind(h.ctx.sessionQuery);
+  h.ctx.sessionQuery.observeSession = async (id, options) => id === 'early-child' && !h.sessions.has(id) ? {source:'prepared',header:{id,origin:'subagent',parentSession:h.parent.id},[Symbol.dispose](){}} : observe(id,options);
+  h.ctx.nativeBody = async args => {
+    h.ctx.catalog.push({id:'early-child',name:args.name});
+    h.sessions.set('early-child',{id:'early-child',header:{id:'early-child',origin:'subagent',parentSession:h.parent.id}});
+    h.handlers.get('subagent/start')({id:'early-child',runId:'early',local:true});
+    h.sessions.delete('early-child');
+    await h.handlers.get('subagent/end')({id:'early-child',runId:'early',local:true});
+    return {kind:'activation',name:args.name};
+  };
   const value = await h.definitions.get('routed_subagent').definition.execute(request, h.exec);
-  assert.equal(value.subagentId, 'early-child');
+  assert.equal(value.childId, 'early-child');
   assert.deepEqual(service.runtime.journal.load().map(record => record.status), ['intent', 'accepted', 'settled']);
 });
 

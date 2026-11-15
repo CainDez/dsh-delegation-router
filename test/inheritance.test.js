@@ -40,7 +40,7 @@ function fixture(overrides = {}) {
     readAuthorization: authorization, estimateContext: () => 100,
     preflight: async options => { prepared.push(options); },
     invokeNative: async (args, _exec, beforeDispatch) => {
-      beforeDispatch(); calls.push(args); return { kind: 'activation', subagentId: 'child-' + calls.length };
+      beforeDispatch(); calls.push(args); return { kind: 'activation', childId: 'child-' + calls.length };
     },
     ...dependencies,
   });
@@ -230,7 +230,7 @@ test('parent route drift during intent audit is rejected and releases quota with
 test('native pipeline fence rejects post-prepare parent drift synchronously before actual dispatch', async () => {
   const entered = deferred(), release = deferred(); let dispatches = 0, completions = 0;
   const native = { output: { schema: { type: 'object', required: ['kind', 'subagentId'], properties: { kind: { type: 'string', const: 'activation' }, subagentId: { type: 'string' } } } } };
-  const ctx = { tools: { executable: () => native, schemas: () => [{ name: 'subagent', parameters: { properties: { provider: {}, model: {}, reasoning_effort: {} } } }] } };
+  const ctx = { sessionQuery:{async observeSession(id) {return {header:{id,origin:'subagent',parentSession:'root'},[Symbol.dispose](){}};}}, tools: { executable: () => native, schemas: () => [{ name: 'subagent', parameters: { properties: { provider: {}, model: {}, reasoning_effort: {} } } }] } };
   const pipeline = {
     prepare: async input => { entered.resolve(); await release.promise; return { kind: 'dispatch', exec: input }; },
     dispatch: async () => { dispatches++; return { kind: 'post-result', result: { value: { kind: 'activation', subagentId: 'native-child' } } }; },
@@ -256,7 +256,7 @@ test('parent changes after dispatch preserve the frozen child route and normal a
   const f = fixture({ invokeNative: async (args, _exec, fence) => {
     fence(); sent = { ...args }; publications++;
     await Promise.resolve(); f.parent.options = { provider: 'p-b', model: 'm-b', reasoningEffort: 'low' };
-    return { kind: 'activation', subagentId: 'published-child' };
+    return { kind: 'activation', childId: 'published-child' };
   } });
   const run = f.router.run(f.parent, request(), exec('published'));
   const result = await run;
@@ -295,7 +295,7 @@ test('inherited presets share actual-model quota with fixed aliases regardless o
   for (const preset_id of ['default-high', 'default-max', 'fixed']) {
     await assert.rejects(f.router.run(f.parent, request({ preset_id }), exec(preset_id)), { code: 'MODEL_CAPACITY' });
   }
-  assert.equal(f.calls.length, 1); f.router.settle(f.parent.id, first.subagentId);
+  assert.equal(f.calls.length, 1); f.router.settle(f.parent.id, first.childId);
   const second = await f.router.run(f.parent, request({ preset_id: 'fixed' }), exec('fixed-later'));
   assert.equal(second.selected.model, 'm-a'); assert.equal(f.calls.length, 2);
   assert.ok(f.journal.load().every(row => row.modelId === JSON.stringify(['p-a', 'm-a'])));

@@ -22,6 +22,10 @@ const requestParameters = {
 const output = {
   schema: {
     type: 'object', additionalProperties: true, properties: {
+      kind: { type: 'string' },
+      name: { type: 'string', description: 'Native model-facing child name; not a Session id.' },
+      childId: { type: 'string', description: 'Verified durable child Session id for audit, status and reconciliation.' },
+      subagentId: { type: 'string', description: 'Compatibility alias of the verified childId, never the native name.' },
       policy_revision: { type: 'string' },
       decisionId: { type: 'string' },
       routingReason: { type: 'string' },

@@ -16,7 +16,7 @@ function fixture(overrides = {}) {
   const router = new SubagentRouter({
     config: { schemaVersion: 2, enabled: true, presets: [preset('a'), preset('b')], defaultPreset:'a', ...configExtra },
     resolveModel: async () => structuredClone(metadata), readAuthorization: () => auth(['a', 'b']),
-    preflight: async () => {}, invokeNative: async args => { calls.push(args); return { kind: 'activation', subagentId: 'child-' + calls.length }; },
+    preflight: async () => {}, invokeNative: async args => { calls.push(args); return { kind: 'activation', childId: 'child-' + calls.length }; },
     journal, estimateContext: () => 100,
     ...dependencies,
   });
@@ -26,7 +26,7 @@ const exec = (callId, signal) => ({ callId, signal });
 test('runtime only selects child options and preserves a deeply frozen parent Agent', async () => {
   const f = fixture(), before = structuredClone(f.parent);
   const result = await f.router.run(f.parent, request({ preset_id: 'b' }), exec('first'));
-  assert.equal(result.subagentId, 'child-1');
+  assert.equal(result.childId, 'child-1');
   assert.deepEqual(result.selected, { provider: 'provider-b', model: 'model-b', effort: 'low' });
   assert.deepEqual(f.calls[0], { prompt: 'Implement bounded child work', description: 'child work', provider: 'provider-b', model: 'model-b', reasoning_effort: 'low' });
   assert.deepEqual(f.parent, before);
@@ -36,7 +36,7 @@ test('runtime only selects child options and preserves a deeply frozen parent Ag
 
 test('concurrent starts reserve model capacity before native publication', async () => {
   const entered = deferred(), release = deferred(); let starts = 0;
-  const f = fixture({ config: { limits: { maxActivePerModel: 1 } }, invokeNative: async () => { starts++; entered.resolve(); await release.promise; return { kind: 'activation', subagentId: 'only-child' }; } });
+  const f = fixture({ config: { limits: { maxActivePerModel: 1 } }, invokeNative: async () => { starts++; entered.resolve(); await release.promise; return { kind: 'activation', childId: 'only-child' }; } });
   const first = f.router.run(f.parent, request(), exec('one'));
   await entered.promise;
   await assert.rejects(f.router.run(f.parent, request(), exec('two')), { code: 'MODEL_CAPACITY' });
@@ -49,7 +49,7 @@ test('concurrent starts reserve model capacity before native publication', async
 
 test('pending quota is shared across candidate models', async () => {
   const entered = deferred(), release = deferred();
-  const f = fixture({ config: { limits: { maxPendingStarts: 1 } }, invokeNative: async () => { entered.resolve(); await release.promise; return { kind: 'activation', subagentId: 'child' }; } });
+  const f = fixture({ config: { limits: { maxPendingStarts: 1 } }, invokeNative: async () => { entered.resolve(); await release.promise; return { kind: 'activation', childId: 'child' }; } });
   const first = f.router.run(f.parent, request({ preset_id: 'a' }), exec('one'));
   await entered.promise;
   await assert.rejects(f.router.run(f.parent, request({ preset_id: 'b' }), exec('two')), { code: 'PENDING_LIMIT' });
@@ -59,7 +59,7 @@ test('pending quota is shared across candidate models', async () => {
 test('creation count survives settlement and cannot be reset by child completion', async () => {
   const f = fixture({ config: { limits: { maxCreationsPerParent: 1 } } });
   const result = await f.router.run(f.parent, request(), exec('one'));
-  f.router.settle(f.parent.id, result.subagentId);
+  f.router.settle(f.parent.id, result.childId);
   await assert.rejects(f.router.run(f.parent, request(), exec('two')), { code: 'CREATION_LIMIT' });
   assert.equal(f.calls.length, 1);
 });
@@ -149,7 +149,7 @@ test('ambiguous native return is unknown; definitely-not-started rejection frees
   await assert.rejects(f.router.run(f.parent, request(), exec('one')), { code: 'START_UNKNOWN' });
   await assert.rejects(f.router.run(f.parent, request(), exec('two')), { code: 'RECOVERY_REQUIRED' });
   let first = true;
-  const known = fixture({ config: { limits: { maxPendingStarts: 1, maxActivePerModel: 1 } }, invokeNative: async () => { if (first) { first = false; throw Object.assign(new Error('Denied'), { definitelyNotStarted: true }); } return { kind: 'activation', subagentId: 'child' }; } });
+  const known = fixture({ config: { limits: { maxPendingStarts: 1, maxActivePerModel: 1 } }, invokeNative: async () => { if (first) { first = false; throw Object.assign(new Error('Denied'), { definitelyNotStarted: true }); } return { kind: 'activation', childId: 'child' }; } });
   await assert.rejects(known.router.run(known.parent, request(), exec('one')));
   await known.router.run(known.parent, request(), exec('two'));
   assert.deepEqual(known.journal.load().map(r => r.status), ['intent', 'rejected', 'intent', 'accepted']);
@@ -157,7 +157,7 @@ test('ambiguous native return is unknown; definitely-not-started rejection frees
 
 test('terminal lifecycle event arriving before creation receipt is reconciled without a leaked slot', async () => {
   let router;
-  const f = fixture({ config: { limits: { maxActivePerModel: 1 } }, invokeNative: async () => { router.settle('root-session', 'fast-child'); return { kind: 'activation', subagentId: 'fast-child' }; } });
+  const f = fixture({ config: { limits: { maxActivePerModel: 1 } }, invokeNative: async () => { router.settle('root-session', 'fast-child'); return { kind: 'activation', childId: 'fast-child' }; } });
   router = f.router;
   await router.run(f.parent, request(), exec('one'));
   assert.deepEqual(f.journal.load().map(r => r.status), ['intent', 'accepted', 'settled']);
@@ -219,16 +219,16 @@ test('settlement audit failure pauses internally, snapshots unknown, and duplica
   const journal=new MemoryJournal(),append=journal.append.bind(journal);let settlementWrites=0;
   journal.append=record=>{if(record.status==='settled'){settlementWrites++;throw Object.assign(new Error('fsync failure'),{code:'AUDIT_IO'});}append(record);};
   const f=fixture({journal});const result=await f.router.run(f.parent,request(),exec('one'));
-  assert.throws(()=>f.router.settle(f.parent.id,result.subagentId),{code:'AUDIT_IO'});
+  assert.throws(()=>f.router.settle(f.parent.id,result.childId),{code:'AUDIT_IO'});
   assert.equal(f.router.ledger.state(f.parent.id).paused,true);
-  f.router.settle(f.parent.id,result.subagentId);assert.equal(settlementWrites,1);
+  f.router.settle(f.parent.id,result.childId);assert.equal(settlementWrites,1);
   const [snapshot]=await f.router.decisions(f.parent);assert.equal(snapshot.status,'unknown');assert.equal(snapshot.settled,false);
   await assert.rejects(f.router.run(f.parent,request(),exec('two')),{code:'RECOVERY_REQUIRED'});
 });
 
 test('concurrent end-before-receipt events remain isolated by exact parent and child identity', async () => {
   const a=deferred(),b=deferred(),entered=deferred();let starts=0;
-  const f=fixture({invokeNative:async()=>{const index=++starts;if(index===2)entered.resolve();await (index===1?a.promise:b.promise);return {kind:'activation',subagentId:'c'+index};}});
+  const f=fixture({invokeNative:async()=>{const index=++starts;if(index===2)entered.resolve();await (index===1?a.promise:b.promise);return {kind:'activation',childId:'c'+index};}});
   const one=f.router.run(f.parent,request({preset_id:'a'}),exec('one'));
   const two=f.router.run(f.parent,request({preset_id:'b'}),exec('two'));
   await entered.promise;
@@ -240,8 +240,8 @@ test('concurrent end-before-receipt events remain isolated by exact parent and c
 });
 
 test('native activation without a nonempty bounded identity remains unknown', async () => {
-  for(const subagentId of ['', ' ', 'x'.repeat(501)]) {
-    const f=fixture({invokeNative:async()=>({kind:'activation',subagentId})});
+  for(const childId of ['', ' ', 'x'.repeat(501)]) {
+    const f=fixture({invokeNative:async()=>({kind:'activation',childId})});
     await assert.rejects(f.router.run(f.parent,request(),exec('empty')),{code:'START_UNKNOWN'});
     assert.equal(f.router.ledger.state(f.parent.id).paused,true);
   }
@@ -253,7 +253,7 @@ test('native beforeDispatch fence also checks cancellation and live authorizatio
     const f=fixture({readAuthorization:()=>allowed,invokeNative:async(_args,_exec,beforeDispatch)=>{
       entered.resolve();await release.promise;
       try { beforeDispatch(); } catch(error) { error.definitelyNotStarted=true;throw error; }
-      dispatches++;return {kind:'activation',subagentId:'must-not-start'};
+      dispatches++;return {kind:'activation',childId:'must-not-start'};
     }});
     const running=f.router.run(f.parent,request({preset_id:'a'}),exec('fence-'+change,controller.signal));await entered.promise;
     if(change==='cancel')controller.abort();else allowed=auth(['b']);release.resolve();
@@ -293,7 +293,7 @@ test('same-model presets share active quota regardless of alias or effort',async
   const f=fixture({config:{presets:[preset('a'),preset('high',{provider:'provider-a',model:'model-a',effort:'high'})],limits:{maxActivePerModel:1}}});
   const first=await f.router.run(f.parent,request({preset_id:'a'}),exec('low'));
   await assert.rejects(f.router.run(f.parent,request({preset_id:'high'}),exec('high-denied')),{code:'MODEL_CAPACITY'});
-  assert.equal(f.calls.length,1);f.router.settle(f.parent.id,first.subagentId);
+  assert.equal(f.calls.length,1);f.router.settle(f.parent.id,first.childId);
   const second=await f.router.run(f.parent,request({preset_id:'high'}),exec('high-allowed'));
   assert.equal(second.selected.effort,'high');assert.equal(f.calls[1].reasoning_effort,'high');
 });

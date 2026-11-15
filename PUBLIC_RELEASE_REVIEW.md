@@ -30,7 +30,7 @@
 
 ## 兼容与发布边界
 
-DSH 0.2.2-rc.2 的原生 name-only 回执不满足本插件的 durable Session ID 契约，仍不支持 routed_subagent 创建；源码包含派发前拒绝保护。本轮隐私重建不是 rc.2 适配，也不是同版本归档重新发行，详见[兼容性说明](<COMPATIBILITY.md>)和[验证范围](<VALIDATION.md>)。
+历史隐私重建基线 0.8.1 不支持 DSH 0.2.2-rc.2 的 name-only 原生回执；该结论仅描述当时状态。后续 0.8.2 针对 rc.3 增加真实子 ID 校验适配，当前范围见[兼容性说明](<COMPATIBILITY.md>)和[验证范围](<VALIDATION.md>)。
 
 本轮仅重建本地仓库，没有 fetch、推送、强推、删除 GitHub 仓库或修改可见性。新本地仓库不配置 remote，避免意外 fetch/pull 把旧历史引回。
 

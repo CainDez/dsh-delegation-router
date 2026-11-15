@@ -27,7 +27,7 @@ test('delegation evidence reports concurrent parent-route changes rather than cl
  const ctx={set(){},get(){},agents:{get:()=>parent}};
  const service=new Service(ctx,{policy:{enabled:false}});
  service.policy={enabled:true};
- service.manager={run:async()=>{route={...route,model:'externally-changed'};return {kind:'activation',subagentId:'child'}}};
+ service.manager={run:async()=>{route={...route,model:'externally-changed'};return {kind:'activation',childId:'child'}}};
  const value=await service.runWithParentEvidence({}, {agent:parent});
  assert.equal(value.parentRouteUnchanged,false);assert.equal(value.parentRouteBefore.model,'one');assert.equal(value.parentRouteAfter.model,'externally-changed');
 });

@@ -1,13 +1,13 @@
-# 安装与迁移 · 0.8.1
+# 安装与迁移 · 0.8.2
 
-插件版本：0.8.1。已记录的宿主验证基线为 DSH Desktop 0.2.2-rc.1；这不是“最低版本”或“后续版本全部兼容”的承诺。DSH 0.2.2-rc.2 的原生创建回执不兼容，**不要在 rc.2 启用路由创建**。完整范围见[兼容性说明](<COMPATIBILITY.md>)。包名 dsh-delegation-router，Cordis 行 delegation-router，服务 delegationRouter。
+插件版本：0.8.2。当前目标宿主为 DSH Desktop 0.2.2-rc.3；本版修复原生 kind/name 创建回执兼容性，不承诺其它版本自动兼容。完整范围见[兼容性说明](<COMPATIBILITY.md>)。包名 dsh-delegation-router，Cordis 行 delegation-router，服务 delegationRouter。
 
 ## 官方 CLI 安装（无需 Computer Use）
 
 从可信发布渠道取得归档并核对对应发布收据的 SHA-256；以下命令在归档所在目录执行。先关闭创建路由，等待已有激活结清；备份配置并保留原审计。对当前 Desktop 使用同一个 desktop profile（若使用其它 profile，请替换名称）：
 
 ```powershell
-dsh plugin --profile desktop add "./dsh-delegation-router-0.8.1.tgz"
+dsh plugin --profile desktop add "https://github.com/CainDez/dsh-delegation-router/releases/download/v0.8.2/dsh-delegation-router-0.8.2.tgz"
 ```
 
 也可通过 Desktop 插件管理安装。安装后必须确认实际运行的是新代码代际，不能仅凭磁盘版本判断完成。不要直接覆盖安装目录，也不要重启或重放不确定子任务。

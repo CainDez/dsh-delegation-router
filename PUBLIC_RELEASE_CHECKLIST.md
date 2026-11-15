@@ -37,7 +37,7 @@ node scripts/check.js
 npm pack --dry-run --ignore-scripts
 # candidate-dir 须已创建；仅产生本地候选包，不发布或安装
 npm pack --ignore-scripts --pack-destination ./candidate-dir
-node scripts/verify-pack.js ./candidate-dir/dsh-delegation-router-0.8.1.tgz
+node scripts/verify-pack.js ./candidate-dir/dsh-delegation-router-0.8.2.tgz
 ```
 
 以上针对当前工作版本；版本变化后替换归档名。源码仓库提供测试与脚本，生产包不携带这些 QA 文件。

@@ -115,30 +115,42 @@ try {
  const nativeDefinition=nativeDefinitions.find(tool=>tool.name==='subagent');
  assert.ok(nativeDefinition,'Actual host must register its native tool definition; no version skip');
  const nativeOutput=nativeDefinition.output.schema;
- assert.equal(nativeOutput.type,'object');
- const nativeDispatchCompatible=nativeOutput.properties?.subagentId?.type==='string' && nativeOutput.required?.includes('subagentId')===true;
- let detachedNativeOutputContractRejected=false;
- const pipelineCalls={prepare:0,dispatch:0,complete:0};
- if(!nativeDispatchCompatible){
-  assert.equal(nativeOutput.additionalProperties,false);
-  assert.deepEqual(Object.keys(nativeOutput.properties).sort(),['kind','name']);
-  assert.deepEqual([...nativeOutput.required].sort(),['kind','name']);
-  assert.deepEqual(nativeOutput.properties.kind,{type:'string',const:'activation'});
-  assert.deepEqual(nativeOutput.properties.name,{type:'string'});
-  // Exercise the plugin's fail-closed boundary with the real registered definition,
-  // not execute() or a fabricated legacy subagentId. No staged pipeline is entered.
-  const {createNativeInvoker}=await import('../src/native-adapter.js');
-  const pipeline=Object.fromEntries(Object.keys(pipelineCalls).map(key=>[key,()=>{pipelineCalls[key]++;throw Error('Native pipeline must not run');}]));
-  const invoke=createNativeInvoker({tools:{executable:()=>nativeDefinition,schemas:()=>[{name:'subagent',parameters:nativeDefinition.parameters}]}},pipeline);
-  await assert.rejects(invoke({}, {agent:inheritedParent,token:{},toolSet:{},signal:new AbortController().signal,callId:'detached-output-contract'}),
-   {code:'NATIVE_OUTPUT_CONTRACT_UNSUPPORTED',definitelyNotStarted:true});
-  assert.deepEqual(pipelineCalls,{prepare:0,dispatch:0,complete:0});
-  detachedNativeOutputContractRejected=true;
- }
+ assert.equal(nativeOutput.type,'object');assert.equal(nativeOutput.additionalProperties,false);
+ assert.deepEqual(Object.keys(nativeOutput.properties).sort(),['kind','name']);
+ assert.deepEqual([...nativeOutput.required].sort(),['kind','name']);
+ assert.deepEqual(nativeOutput.properties.kind,{type:'string',const:'activation'});
+ assert.deepEqual(nativeOutput.properties.name,{type:'string'});
+ // Run the shipped staged pipeline with a definition carrying the shipped output
+ // schema, but a detached body. Never execute the real native creation body.
+ const {ToolExecutionPipeline}=await import(pathToFileURL(hostRequire.resolve('@deepseek-ai/dsh-tools/pipeline')).href);
+ const {createNativeInvoker}=await import('../src/native-adapter.js');
+ const pipelineCalls={prepare:0,dispatch:0,complete:0};const catalog=[];let observationCloses=0,detachedBodies=0;
+ const childId='detached-receipt-session-id';
+ const detachedDefinition={...nativeDefinition,execute:async args=>{
+  detachedBodies++;catalog.push({id:childId,name:args.name,mode:'continuable',label:'detached',createdAt:1});
+  return {kind:'activation',name:args.name};
+ }};
+ const detachedCtx={
+  tools:{executable:()=>detachedDefinition,schemas:()=>[{name:'subagent',parameters:nativeDefinition.parameters}],checkGuards:()=>undefined},
+  sessionQuery:{async observeSession(id){return {
+   header:id===inheritedParent.id?{id}:{id,origin:'subagent',parentSession:inheritedParent.id},
+   projections:{values:{subagentCatalog:catalog}},[Symbol.dispose](){observationCloses++;}
+  };}},
+  async waterfall(...args){return args.at(-1)();},events:{dispatch:()=>[]},logger:{warn:message=>{throw Error(message);}}
+ };
+ const realPipeline=new ToolExecutionPipeline(detachedCtx);
+ const pipeline=Object.fromEntries(Object.keys(pipelineCalls).map(stage=>[stage,async(...args)=>{pipelineCalls[stage]++;return realPipeline[stage](...args);} ]));
+ const invoke=createNativeInvoker(detachedCtx,pipeline);
+ const receipt=await invoke({prompt:'Detached receipt contract only',description:'No child creation',provider:'p',model:'m',reasoning_effort:'high'},
+  {agent:inheritedParent,token:{},toolSet:{},signal:new AbortController().signal,callId:'detached-output-contract'});
+ assert.deepEqual(receipt,{kind:'activation',name:catalog[0].name,childId});
+ assert.match(receipt.name,/^router-[a-f0-9]{24}$/);assert.notEqual(receipt.name,receipt.childId);
+ assert.deepEqual(pipelineCalls,{prepare:1,dispatch:1,complete:1});assert.equal(observationCloses,3);assert.equal(detachedBodies,1);
  assert.equal(nativeStarts,0);
+ const nativeDispatchCompatible=true;
  const nativeOutputContract={fields:Object.keys(nativeOutput.properties),additionalProperties:nativeOutput.additionalProperties,
-  nativeDispatchCompatible,detachedNativeOutputContractRejected,rejectionCode:detachedNativeOutputContractRejected?'NATIVE_OUTPUT_CONTRACT_UNSUPPORTED':null,
-  nativeToolExecuted:false,nativeActivationsStarted:nativeStarts,pipelineCalls};
+  nativeDispatchCompatible,detachedNameReceiptMapped:true,shippedPipeline:true,verifiedOwnedSessionId:true,observationCloses,
+  nativeToolExecuted:false,detachedBodies,nativeActivationsStarted:nativeStarts,pipelineCalls};
  assert.deepEqual(sideEffects,{networkAttempts:0,processAttempts:0});
  console.log(JSON.stringify({hostVersion:JSON.parse(await readFile(resolve(process.argv[2]),'utf8')).version,realHostSchemaAndToolLibrary:true,detachedServiceHarness:true,nativeOutputContract,nativeDispatchCompatible,results,inheritedCapturedRequestRatherThanStaleOptions:true,exactDefaultHighRatherThanParentMax:true,liveCordisMount:false,realManagerActivation:false,agentsCreated:0,profileChanged:false,...sideEffects,paidCalls:0},null,2));
 }finally{

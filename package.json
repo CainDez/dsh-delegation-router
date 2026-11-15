@@ -1,6 +1,6 @@
 {
   "name": "dsh-delegation-router",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "repository": { "type": "git", "url": "git+https://github.com/CainDez/dsh-delegation-router.git" },
   "homepage": "https://github.com/CainDez/dsh-delegation-router#readme",
@@ -45,9 +45,9 @@
     "@deepseek-ai/cosmokit": "~1.9.0",
     "@deepseek-ai/cordis": "~4.1.0",
     "@deepseek-ai/schemastery": "~3.19.0",
-    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-subagent": "0.2.2-rc.1",
-    "zod": "4.4.3"
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-subagent": "0.2.2-rc.3",
+    "zod": "4.6.6"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cosmokit": { "optional": true },

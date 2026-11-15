@@ -34,8 +34,9 @@ test('shipped user documentation has no broken relative Markdown links', async (
   }
 });
 
-test('installation example uses a portable archive path', async () => {
+test('installation example pins the versioned official release URL without machine-specific paths', async () => {
   const installation = await read('INSTALLATION.md');
-  assert.ok(installation.includes('./dsh-delegation-router-' + manifest.version + '.tgz'));
+  const releaseUrl='https://github.com/CainDez/dsh-delegation-router/releases/download/v'+manifest.version+'/dsh-delegation-router-'+manifest.version+'.tgz';
+  assert.ok(installation.includes('dsh plugin --profile desktop add '+JSON.stringify(releaseUrl)));
   assert.doesNotMatch(installation, /[A-Z]:\\|\/Users\/|\/home\//);
 });
