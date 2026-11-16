@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import { normalizeConfig } from '../src/config.js';
+import { LiveRouter } from '../src/live-router.js';
+import { MemoryJournal } from '../src/journal.js';
 
 // Shell Node cannot read Electron's app.asar. This structural mock only loads the
 // module; compiler tests below exercise the real implementation, not a mock.
@@ -30,6 +32,8 @@ test('native schema exposes only the ui entry and auditFile; ui stays volatile r
 test('schema describes fixed candidates and the required schema version', () => {
   assert.match(RouterConfig.dict.ui.meta.description, /候选/);
   assert.match(RouterConfig.dict.ui.meta.description, /schemaVersion 3/);
+  assert.match(RouterConfig.dict.ui.meta.description, /schemaVersion 4/);
+  assert.match(RouterConfig.dict.ui.meta.description, /全局共享/);
   assert.doesNotMatch(RouterConfig.dict.ui.meta.description, /policy|别名/);
 });
 
@@ -121,4 +125,96 @@ test('explicit empty or fixed v3 sources never receive implicit candidates or a 
   invalid({ ui: { schemaVersion: 3, enabled: true, candidates: [candidate()] } });
   invalid({ ui: { schemaVersion: 3, defaultCandidateId: 'fast' } });
   assert.equal(Object.hasOwn(compilePluginConfig({ ui: { schemaVersion: 3 } }).policy, 'defaultCandidateId'), false);
+});
+
+const multi = (activeConfigId = 'first') => ({ schemaVersion: 4, enabled: true,
+  candidates: [candidate(), candidate('deep', 'high')], limits: { maxActivePerModel: 1 }, activeConfigId, configs: [
+    { id: 'first', name: '任意预设 First', defaultCandidateId: 'fast', overrides: [] },
+    { id: 'second', name: '任意预设 Second', defaultCandidateId: 'deep', overrides: [{ id: 'fast', name: 'Preset-specific name', description: 'Preset-specific description' }] },
+  ] });
+const routePool = policy => policy.candidates.map(({ id, provider, model, effort }) => ({ id, provider, model, effort }));
+
+test('v4 compiles preset labels/default over a single global pool while audit, enabled and limits stay global', () => {
+  const first = compilePluginConfig({ ui: multi() }).policy;
+  for (const active of ['first', 'second']) {
+    const raw = freeze({ ui: multi(active), auditFile: 'C:/global/audit.jsonl' }), before = structuredClone(raw);
+    const result = compilePluginConfig(raw);
+    assert.deepEqual(Object.keys(result), ['policy', 'auditFile']);
+    assert.equal(result.auditFile, 'C:/global/audit.jsonl'); assert.equal(result.policy.enabled, true);
+    assert.equal(result.policy.limits.maxActivePerModel, 1);
+    assert.deepEqual(routePool(result.policy), routePool(first));
+    assert.equal(result.policy.defaultCandidateId, active === 'first' ? 'fast' : 'deep');
+    assert.equal(result.policy.candidates[0].name, active === 'first' ? 'fast' : 'Preset-specific name');
+    assert.ok(Object.isFrozen(result)); assert.ok(Object.isFrozen(result.policy.candidates[0]));
+    assert.notEqual(result.policy.candidates[0], raw.ui.candidates[0]); assert.deepEqual(raw, before);
+  }
+  invalid({ ui: { ...multi(), auditFile: 'C:/nested/audit.jsonl' } });
+  const nested = multi(); nested.configs[0].auditFile = 'C:/nested/audit.jsonl'; invalid({ ui: nested });
+});
+
+test('preset metadata, order, inactive overrides and inactive defaults never change compiled runtime config', () => {
+  const raw = { ui: multi(), auditFile: 'C:/global/audit.jsonl' }, before = compilePluginConfig(raw);
+  const pool = structuredClone(raw.ui.candidates);
+  raw.ui.configs[0].name = '重命名当前预设'; raw.ui.configs[1].name = '重命名未选中预设';
+  raw.ui.configs[1].defaultCandidateId = 'fast'; raw.ui.configs[1].overrides = [{ id: 'deep', name: 'Inactive label', description: '' }];
+  raw.ui.configs.reverse();
+  assert.deepEqual(compilePluginConfig(raw), before); assert.equal(JSON.stringify(compilePluginConfig(raw)), JSON.stringify(before));
+  raw.ui.configs.push({ id: 'third', name: 'Third', defaultCandidateId: 'fast' });
+  assert.deepEqual(compilePluginConfig(raw), before);
+  raw.ui.configs = raw.ui.configs.filter(entry => entry.id === 'first');
+  assert.deepEqual(compilePluginConfig(raw), before); assert.deepEqual(raw.ui.candidates, pool);
+});
+
+test('invalid inactive preset data and v4 descriptors reject without evaluating getters or repairing old per-policy storage', () => {
+  const bad = multi(); bad.configs[1].overrides[0].effort = 'high'; invalid({ ui: bad });
+  const duplicate = multi(); duplicate.configs[1].name = '  任意预设 FIRST  '; invalid({ ui: duplicate });
+  const missing = multi(); missing.configs[1].defaultCandidateId = undefined; invalid({ ui: missing });
+  const removed = multi(); removed.activeConfigId = 'removed'; invalid({ ui: removed });
+  invalid({ ui: { schemaVersion: 4, activeConfigId: 'old', configs: [{ id: 'old', name: 'Old', policy: ui() }] } });
+  let evaluated = false;
+  const getter = multi(); Object.defineProperty(getter.configs[1].overrides[0], 'name', { enumerable: true, get() { evaluated = true; return 'Label'; } });
+  invalid({ ui: getter }); assert.equal(evaluated, false);
+});
+
+test('shared pool mutations affect every preset but no preset can own routes, enablement or limits', () => {
+  const raw = multi(), pool = structuredClone(raw.candidates);
+  raw.candidates[0].model = 'new-global-model'; raw.limits.maxActivePerModel = 3;
+  for (const active of ['first', 'second']) {
+    raw.activeConfigId = active; const compiled = compilePluginConfig({ ui: raw }).policy;
+    assert.equal(compiled.candidates[0].model, 'new-global-model'); assert.equal(compiled.limits.maxActivePerModel, 3);
+    assert.deepEqual(compiled.candidates.map(row => row.id), pool.map(row => row.id));
+  }
+  for (const key of ['policy', 'candidates', 'enabled', 'limits', 'provider', 'model', 'effort']) {
+    const bad = multi(); bad.configs[1][key] = undefined; invalid({ ui: bad });
+  }
+});
+
+test('preset compilation preserves LiveRouter CONFIG_BUSY, disable and global audit-path boundaries', () => {
+  let raw = { ui: multi(), auditFile: 'C:/global/audit.jsonl' };
+  const router = new LiveRouter({ readConfig: () => compilePluginConfig(raw), createJournal: () => new MemoryJournal() });
+  try {
+    const runtime = router.ensure(), initial = router.status();
+    for (const pending of [false, true]) {
+      router.inFlight = pending ? 0 : 1; router.latest = pending ? new Map([['child', 'accepted']]) : new Map();
+      raw.ui.configs[1].name = pending ? 'Inactive renamed again' : 'Inactive renamed';
+      raw.ui.configs[1].overrides[0].name = pending ? 'Inactive label again' : 'Inactive label';
+      assert.doesNotThrow(() => router.validateUpdate(compilePluginConfig(raw)));
+      assert.equal(router.ensure(), runtime); assert.equal(router.status().configuredRevision, initial.configuredRevision);
+      assert.equal(router.status().configurationPending, false);
+      const switched = structuredClone(raw); switched.ui.activeConfigId = 'second';
+      assert.throws(() => router.validateUpdate(compilePluginConfig(switched)), { code: 'CONFIG_BUSY' });
+      for (const change of [
+        value => { value.ui.limits.maxActivePerModel = 2; },
+        value => { value.ui.candidates[0].model = 'different-global-model'; },
+        value => { value.ui.configs[0].overrides = [{ id: 'fast', name: 'Current preset label' }]; },
+      ]) { const changed = structuredClone(raw); change(changed); assert.throws(() => router.validateUpdate(compilePluginConfig(changed)), { code: 'CONFIG_BUSY' }); }
+      const disabled = structuredClone(switched); disabled.ui.enabled = false;
+      assert.doesNotThrow(() => router.validateUpdate(compilePluginConfig(disabled)));
+      const changedAudit = { ...raw, auditFile: 'C:/other/audit.jsonl' };
+      assert.throws(() => router.validateUpdate(compilePluginConfig(changedAudit)), { code: 'AUDIT_PATH_RELOAD_REQUIRED' });
+    }
+    router.inFlight = 0; router.latest.clear(); raw.ui.activeConfigId = 'second';
+    assert.doesNotThrow(() => router.validateUpdate(compilePluginConfig(raw))); assert.notEqual(router.ensure(), runtime);
+    assert.equal(router.status().configuredRevision, router.status().activeRevision);
+  } finally { router.close(); }
 });

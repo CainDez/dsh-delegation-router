@@ -1,10 +1,10 @@
 import z from '@deepseek-ai/schemastery';
-import { normalizeConfig } from './config.js';
+import { compileStoredConfig } from './config-sets.js';
 
 // Preserve the raw ui source through native Settings. The schema must never
 // default, relabel or silently rewrite an unsupported configuration source.
 export const RouterConfig = z.object({
-  ui: z.any().default(undefined).volatile().description('执行档案入口 ui：每个候选固定 provider/model 与精确 effort（null 表示明确无档位）；支持 AI 生成草稿、校验确认后应用，亦可手动编辑。启用时必须提供有效 defaultCandidateId；未提供 ui 时为空禁用配置。显式提供（含空对象）必须是 schemaVersion 3；候选必须提供固定 provider/model/effort。'),
+  ui: z.any().default(undefined).volatile().description('执行档案入口 ui：每个候选固定 provider/model 与精确 effort（null 表示明确无档位）；支持 AI 生成草稿、校验确认后应用，亦可手动编辑。启用时必须提供有效 defaultCandidateId；未提供 ui 时为空禁用配置。显式提供（含空对象）必须是 schemaVersion 3 或 schemaVersion 4 命名配置集；候选模型池、启用状态和限制全局共享；每套预设仅保存默认候选及候选名称/说明覆盖，切换不改变模型池或固定路由。候选必须提供固定 provider/model/effort。'),
   auditFile: z.string().description('审计文件的绝对路径，每个 Profile 独占；不覆盖既有日志或锁。'),
 });
 
@@ -38,13 +38,13 @@ function keys(value, allowed, label) {
   for (const key of Object.keys(value)) if (!allowed.includes(key)) invalid('Unknown ' + label + ' key: ' + key);
 }
 
-/** Compile the single explicit ui source; unsupported sources reject instead of migrating. */
+/** Compile the explicit ui source to its active policy; auditFile remains global. */
 export function compilePluginConfig(raw = {}) {
   const copied = dataCopy(raw);
   keys(copied, ['ui', 'auditFile'], 'plugin configuration');
   if (copied.auditFile !== undefined && typeof copied.auditFile !== 'string') invalid('auditFile must be text');
   const auditFile = copied.auditFile?.trim() ? copied.auditFile : undefined;
-  // An absent (or undefined) ui entry initializes fresh; any provided ui source, including {}, must declare schemaVersion 3.
-  const policy = normalizeConfig(copied.ui === undefined ? undefined : copied.ui);
+  // Storage-only preset names and inactive overrides never enter the LiveRouter digest.
+  const policy = compileStoredConfig(copied.ui);
   return Object.freeze({ policy, ...(auditFile === undefined ? {} : { auditFile }) });
 }

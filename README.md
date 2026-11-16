@@ -6,6 +6,38 @@
 
 每个候选都是一个完整执行档案：名称、固定 `provider / model / effort` 和适用说明。同一模型可以配置多个真实思考等级，主 Agent 选择整个档案，运行时不临时改档。
 
+### 多模型预设（自由命名，共享可用模型池）
+
+同一 DSH Profile 内统一维护一份**全局可用模型池**：候选成员及其固定 `provider/model/effort` 不随预设切换。路由启用开关、配额及审计路径也保持全局。页面顶部最多保存 32 套自由命名的预设，不预设场景或自动分类。
+
+每套预设**只保存候选的名称、分工说明与默认项**；预设不能新增、删除候选或改变模型／思考档位。界面把「当前预设的模型分工」和「全局可用模型池」分开，后者的修改对所有预设生效。
+
+- **新建预设**：保留全局候选、启用开关和配额，只清空新预设的分工说明；默认项沿用当前预设，保存后切换到新预设。
+- **复制当前预设**：复制分工与默认项，不复制或新建可用模型池；修改副本的分工不会改原预设。
+- **重命名／切换**：名称 trim 后须为 1–120 字符、无控制符、不区分大小写判重。切换单次提交并验证完整保存回执，不取消已有委派，仍保留未结工作与 `CONFIG_BUSY` 边界。
+- **删除预设**：仅删除非当前预设且须二次确认，不改全局候选，不自动回退。不能删除当前或最后一套。
+- **维护全局模型池**：模型、档位、新增及删除都只在全局区域操作。仍被任一预设设为默认项的候选不能删除，须先切换相关预设更换默认项；删除其他候选时会同步清除该候选在各预设中的文字覆盖，不自动改默认。
+
+未保存修改、输入不完整、生成／校验中、连接重置或保存结果不确定时禁止管理和切换。旧草稿和旧界面回调（含 A→B→A 及 IME）不能改写另一预设。
+
+多预设模式下，AI 草稿应用只更新当前预设分工与默认项，**不替换全局模型池**。草稿中的模型／档位必须能唯一对应池内候选，否则拒绝应用；请先明确调整全局池再重新生成。旧 v3 单套模式保留原生成流程，允许首次生成初始化候选池。向导的生成模型、要求和本次允许范围仍是页面内存，不按预设另存。
+
+**兼容性**：v3 单套配置继续读取及编辑，普通保存不迁移。首次新增、复制或重命名时保存为 v4，原候选成为全局池，原名称、分工和默认项完整保留。示例（关闭状态可省默认项）：
+
+```json
+{
+  "ui": {
+    "schemaVersion": 4,
+    "enabled": false,
+    "candidates": [],
+    "activeConfigId": "config-1",
+    "configs": [{ "id": "config-1", "name": "我自己定义的预设", "overrides": [] }]
+  }
+}
+```
+
+预设覆盖为 `overrides: [{id, name, description?}]`，只能引用全局候选 ID；省略说明则继承全局说明，空串则清空。启用时每套预设都须有有效默认项。缺失／无效的当前预设、悬空引用或把模型路由／配额放入某套预设都会被拒绝，不自动回退。旧版插件不支持 v4；降级前须备份并将全局池与选中覆盖合成为 v3 单套策略。历史审计和配额计数不因切换重置。
+
 ### AI 配置向导
 
 页面顶部统一显示模型加载状态、模型数和刷新时间。点击“刷新模型”重新读取宿主目录；每个 Provider 独立限时 5 秒，某个 Provider 挂起或失败不会阻止正常 Provider 的模型选择。连接或整体读取超过 20 秒会显示错误并允许重试，迟到结果不会覆盖新目录。刷新不发起推理、不改变配置。
@@ -33,7 +65,7 @@
 - 默认生成少量职责清晰的档案（通常 3–5 个，范围很小时可以更少），不是每个模型每个档位都要生成。模型能力、价格或速度没有可靠依据时明确说明未知。
 - 适用说明建议包含「适用、不适用、选择依据」。这是主 Agent 的选择参考，不是强制任务分类引擎；程序强制保证的是结构、范围和真实等级，不能证明自然语言要求已全部满足。
 
-配置入口只有 `ui` 和可选的绝对路径 `auditFile`。`ui.schemaVersion` 为 3，默认关闭且候选池为空。启用时必须显式指定清单内的 `defaultCandidateId`。
+配置入口只有 `ui` 和可选的绝对路径 `auditFile`。`ui.schemaVersion` 支持 3（原有单套）和 4（命名配置集），每套运行策略仍为严格 v3。未提供配置时默认关闭且候选池为空。启用时必须显式指定当前套清单内的 `defaultCandidateId`。
 
 - `candidates`：每项包含 `id / name / provider / model / effort`，可选 `description`。
 - `effort`：宿主模型目录公布的真实值；明确无可配置档位时填 `null`。目录不可用不等于没有档位。
@@ -68,8 +100,8 @@
 npm test
 npm run check
 npm pack --ignore-scripts
-node scripts/verify-pack.js ./dsh-delegation-router-0.10.1.tgz
-dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.10.1/dsh-delegation-router-0.10.1.tgz
+node scripts/verify-pack.js ./dsh-delegation-router-0.11.0.tgz
+dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.11.0/dsh-delegation-router-0.11.0.tgz
 ```
 
 安装前检查未结委派并备份配置。配置验收优先通过文件和宿主接口核对，无需 Computer Use。宿主库隔离检查可运行 `scripts/verify-host-api.js`、`scripts/verify-host-model-catalog.js`、`scripts/verify-host-lifecycle.js`、`scripts/verify-host-draft.js`，参数为对应宿主的 package.json 路径；它们不连接运行 Profile、不创建 Agent、不发起推理。

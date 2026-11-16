@@ -11,6 +11,32 @@ window.__ModuleLoader__.load({
     const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     const stable = value => JSON.stringify(value, (_key, item) => item && !Array.isArray(item) && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
     const zh = {
+  "draftConfirmPreset": "我已核对变更，确认仅更新当前预设的模型名称、分工说明和默认项；全局可用模型池、档位、启用开关、配额和审计设置不变。",
+  "sharedPool": "全局可用模型池",
+  "sharedPoolHelp": "这里的新增、删除、模型和档位修改对所有预设生效；切换预设不会改变它们。",
+  "presetRoles": "当前预设的模型分工",
+  "draftPoolMismatch": "草稿包含全局池中没有的模型／档位，或对应多个候选而无法唯一匹配。未应用。请先在全局可用模型池中添加或明确调整候选，再重新生成。",
+  "poolDefaultInUse": "此候选仍是某套预设的默认项。请先切到相关预设更换默认项，再从全局模型池删除。",
+  "configSets": "多模型预设",
+  "configSetsHelp": "预设由你自由命名，只保存模型分工、名称和默认项。所有预设共用下方的可用模型池、启用开关和配额。",
+  "activeConfig": "当前预设",
+  "initialConfig": "原有配置",
+  "configName": "预设名",
+  "configNameHint": "输入名称后新建、复制或重命名当前预设",
+  "newConfig": "新建预设",
+  "copyConfig": "复制当前预设",
+  "renameConfig": "重命名当前预设",
+  "manageConfigs": "管理已保存预设",
+  "deleteConfig": "删除预设",
+  "confirmDeleteConfig": "确认删除",
+  "cancelDeleteConfig": "取消删除",
+  "deleteConfigWarning": "删除后无法恢复。请确认要删除的配置：",
+  "configActiveBadge": "当前预设 · 不可删除",
+  "configSetLimit": "最多保存 32 套预设。新建仅清空分工说明并沿用当前默认项；复制保留分工。两者都不改变全局模型池、启用开关或配额。",
+  "configSetProtected": "请先保存或放弃当前修改，并处理保存异常后再管理或切换配置。生成或校验期间不可切换。",
+  "invalidConfigName": "预设名须为 1–120 个字符，不能含控制符或与其他配置重名（不区分大小写）。",
+  "configSwitchHelp": "切换保存成功后用于后续创建；如仍有未结委派，宿主可能拒绝切换。不会取消已有委派。",
+  "configNotConfirmed": "当前更改尚未确认生效，实际委派仍以宿主已保存的有效配置为准。请核对下方保存状态。",
   "scopeSearch": "搜索模型或 Provider",
   "catalogReady": "模型已更新",
   "catalogTimeout": "读取超过 20 秒，请重试；现有配置未改变。",
@@ -114,11 +140,37 @@ window.__ModuleLoader__.load({
   "advanced": "高级与安全设置",
   "auditFile": "审计路径（由原生设置管理）",
   "auditHelp": "此表单保留既有 auditFile，不清除日志或锁。需要修改时请使用原生设置。",
-  "invalidSource": "配置结构无效（需要 v3 候选配置），已阻止此表单覆盖原文；请在原生设置核对修复。",
+  "invalidSource": "配置结构无效（需要 v3 单套或 v4 多套配置），已阻止此表单覆盖原文；请在原生设置核对修复。",
   "invalidSourceTitle": "无效配置",
   "originalConfiguration": "原始配置（只读）"
 };
     const en = {
+  "draftConfirmPreset": "I reviewed the changes and confirm updating only the current preset’s model names, roles and default. The global pool, efforts, enabled state, limits and audit settings remain unchanged.",
+  "sharedPool": "Global available model pool",
+  "sharedPoolHelp": "Adding, removing or changing models and efforts here affects every preset. Switching presets never changes this pool.",
+  "presetRoles": "Current preset model roles",
+  "draftPoolMismatch": "The draft contains a model/effort outside the global pool, or an ambiguous candidate match. Nothing was applied. Update the global pool explicitly and generate again.",
+  "poolDefaultInUse": "This candidate is still a preset default. Select that preset and change its default before removing the candidate from the global pool.",
+  "configSets": "Multi-model presets",
+  "configSetsHelp": "Name your presets freely. Only model roles, names and the default are preset-specific. Available models, enabled state and limits are shared globally.",
+  "activeConfig": "Current preset",
+  "initialConfig": "Original configuration",
+  "configName": "Preset name",
+  "configNameHint": "Enter a name to create, copy or rename the current configuration",
+  "newConfig": "New preset",
+  "copyConfig": "Copy current preset",
+  "renameConfig": "Rename current preset",
+  "manageConfigs": "Manage saved presets",
+  "deleteConfig": "Delete preset",
+  "confirmDeleteConfig": "Confirm deletion",
+  "cancelDeleteConfig": "Cancel deletion",
+  "deleteConfigWarning": "Deletion cannot be undone. Confirm the configuration to delete:",
+  "configActiveBadge": "Current · cannot delete",
+  "configSetLimit": "Save up to 32 presets. New presets clear role descriptions and retain the current default; copies retain roles. Neither changes the global model pool, enabled state or limits.",
+  "configSetProtected": "Save or discard pending edits and resolve save issues before managing or switching configurations. Switching is unavailable during generation or validation.",
+  "invalidConfigName": "Use 1–120 characters without control characters or duplicate names (case-insensitive).",
+  "configSwitchHelp": "After a confirmed save, the selection applies to future starts. Outstanding delegations may prevent switching; existing work is never cancelled.",
+  "configNotConfirmed": "These changes are not confirmed effective. Delegation still follows the host’s saved effective configuration. Check the save status below.",
   "scopeSearch": "Search models or providers",
   "catalogReady": "Models updated",
   "catalogTimeout": "Loading exceeded 20 seconds. Retry; existing settings are unchanged.",
@@ -222,7 +274,7 @@ window.__ModuleLoader__.load({
   "advanced": "Advanced and safety settings",
   "auditFile": "Audit path (managed in native settings)",
   "auditHelp": "This form preserves auditFile and never clears journals or locks. Change the path through native settings.",
-  "invalidSource": "Invalid configuration structure (v3 candidates required). This form cannot overwrite the original; review and repair it in native settings.",
+  "invalidSource": "Invalid configuration structure (v3 single or v4 named configurations required). This form cannot overwrite the original; review and repair it in native settings.",
   "invalidSourceTitle": "Invalid configuration",
   "originalConfiguration": "Original configuration (read-only)"
 };
@@ -248,6 +300,7 @@ window.__ModuleLoader__.load({
       if (source === undefined) return false;
       if (!source || typeof source !== 'object' || Array.isArray(source)) return true;
       const object = item => item && typeof item === 'object' && !Array.isArray(item);
+      if (source.schemaVersion === 4) return !validConfigSets(source);
       if (source.schemaVersion !== 3) return true;
       for (const key of Object.keys(source)) if (!UI_KEYS.includes(key)) return true;
       if (source.enabled !== undefined && typeof source.enabled !== 'boolean') return true;
@@ -258,7 +311,8 @@ window.__ModuleLoader__.load({
     }
     function draftFrom(value) {
       if (invalidSource(value)) return emptyDraft();
-      return withDefaults(value?.ui);
+      const source = value?.ui;
+      return source?.schemaVersion === 4 ? projectConfigSet(source) : withDefaults(source);
     }
     // Equality normalization fills documented defaults only for legitimate v3
     // sources; a bad source (for example an explicit empty {}) is preserved as-is
@@ -266,6 +320,10 @@ window.__ModuleLoader__.load({
     function normalizeAckUi(value) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
       if (invalidSource({ ui: value })) return value;
+      if (value.schemaVersion === 4) {
+        const pool = normalizeAckUi({ schemaVersion: 3, enabled: false, candidates: value.candidates, limits: value.limits });
+        return { ...clone(value), enabled: value.enabled ?? false, candidates: pool.candidates, limits: pool.limits, configs: value.configs.map(row => ({ ...row, overrides: clone(row.overrides ?? []) })) };
+      }
       const ui = withDefaults(value);
       if (Array.isArray(ui.candidates)) ui.candidates = ui.candidates.map(candidate => ({ description: '', ...candidate }));
       return ui;
@@ -295,6 +353,41 @@ window.__ModuleLoader__.load({
         ids.add(candidate.id);
       }
       return (!ui.enabled || ids.has(ui.defaultCandidateId)) && (ui.defaultCandidateId === undefined || ids.has(ui.defaultCandidateId));
+    }
+    // One global candidate pool; presets contain text/default overrides only.
+    const CONFIG_SET_KEYS = ['schemaVersion', 'enabled', 'candidates', 'limits', 'activeConfigId', 'configs'];
+    const CONFIG_ROW_KEYS = ['id', 'name', 'defaultCandidateId', 'overrides'];
+    const OVERRIDE_KEYS = ['id', 'name', 'description'];
+    const configName = value => typeof value === 'string' ? value.trim() : '';
+    const validConfigName = value => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 120 && !/[\x00-\x1f\x7f]/.test(value);
+    function projectConfigSet(value, configId = value.activeConfigId) {
+      const preset = value.configs.find(row => row.id === configId);
+      const overrides = new Map((preset.overrides ?? []).map(row => [row.id, row]));
+      const result = withDefaults({ schemaVersion: 3, enabled: value.enabled ?? false, candidates: value.candidates ?? [], limits: value.limits });
+      result.candidates = result.candidates.map(row => ({ ...row, ...overrides.get(row.id) }));
+      if (preset.defaultCandidateId !== undefined) result.defaultCandidateId = preset.defaultCandidateId;
+      return result;
+    }
+    function validConfigSets(value) {
+      if (!value || typeof value !== 'object' || Array.isArray(value) || value.schemaVersion !== 4 ||
+          Object.keys(value).some(key => !CONFIG_SET_KEYS.includes(key)) || !Array.isArray(value.configs) || value.configs.length < 1 || value.configs.length > 32 ||
+          invalidSource({ ui: { schemaVersion: 3, enabled: false, candidates: value.candidates, limits: value.limits } }) ||
+          !validDraft(withDefaults({ schemaVersion: 3, enabled: false, candidates: value.candidates, limits: value.limits }))) return false;
+      const ids = new Set(), names = new Set(), poolIds = new Set((value.candidates ?? []).map(row => row.id));
+      for (const row of value.configs) {
+        if (!row || typeof row !== 'object' || Array.isArray(row) || Object.keys(row).some(key => !CONFIG_ROW_KEYS.includes(key)) ||
+            typeof row.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/.test(row.id) || ids.has(row.id) || !validConfigName(row.name) ||
+            row.overrides !== undefined && !Array.isArray(row.overrides)) return false;
+        const name = configName(row.name).toLowerCase(), refs = new Set();
+        for (const item of row.overrides ?? []) {
+          if (!item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(key => !OVERRIDE_KEYS.includes(key)) ||
+              !poolIds.has(item.id) || refs.has(item.id) || typeof item.name !== 'string') return false;
+          refs.add(item.id);
+        }
+        if (names.has(name) || !validDraft(projectConfigSet(value, row.id))) return false;
+        ids.add(row.id); names.add(name);
+      }
+      return ids.has(value.activeConfigId);
     }
     const CATALOG_EVENTS = ['llm/adapters-updated', 'llm/models-updated', 'settings/document-updated', 'credentials/record-updated', 'credentials/reference-updated'];
     const modelKey = model => JSON.stringify([model.provider, model.model]);
@@ -401,7 +494,8 @@ window.__ModuleLoader__.load({
         if (this.snapshot.status !== 'ready' || this.snapshot.failures.some(failure => failure.id === provider)) return;
         return this.snapshot.groups.find(group => group.id === provider)?.models.find(item => item.id === model);
       }
-      select(editor, index, key, expected) {
+      select(editor, index, key, expected, viewToken) {
+        if (viewToken !== undefined && !editor.matchesView(viewToken)) return false;
         if (this.disposed || this.snapshot.status !== 'ready') return false;
         const candidate = editor.getSnapshot().draft.candidates[index];
         if (!candidate || expected && stable(candidate) !== stable(expected)) return false;
@@ -414,7 +508,8 @@ window.__ModuleLoader__.load({
         }
         return false;
       }
-      setEffort(editor, index, value, expected) {
+      setEffort(editor, index, value, expected, viewToken) {
+        if (viewToken !== undefined && !editor.matchesView(viewToken)) return false;
         const candidate = editor.getSnapshot().draft.candidates[index];
         if (this.disposed || !candidate || expected && (candidate.id !== expected.id || modelKey(candidate) !== modelKey(expected))) return false;
         const option = catalogEfforts(this.find(candidate.provider, candidate.model), editor.t).find(option => effortKey(option.id) === value);
@@ -441,7 +536,11 @@ window.__ModuleLoader__.load({
       }
       read() {
         this.host = this.form.getSnapshot();
-        if (!this.dirty && !this.saving && !this.reloading && !this.savedButNotLive && !this.connectionReset) { this.draft = draftFrom(this.host.value); this.baseRevision = this.host.revision; }
+        if (!this.dirty && !this.saving && !this.reloading && !this.savedButNotLive && !this.connectionReset) {
+          this.draft = draftFrom(this.host.value);
+          this.configSet = !invalidSource(this.host.value) && this.host.value?.ui?.schemaVersion === 4 ? clone(this.host.value.ui) : undefined;
+          this.baseRevision = this.host.revision;
+        }
         else if (!this.saving && this.host.revision !== this.baseRevision) this.conflicted = true;
         if (!this.editable() || this.conflicted) this.cancelAutosave();
         this.publish();
@@ -471,7 +570,7 @@ window.__ModuleLoader__.load({
         const badDoc = invalidSource(this.host?.user) ? this.host.user : invalidSource(this.host?.value) ? this.host.value : undefined;
         const invalidOriginal = badDoc ? clone(Object.keys(badDoc).some(key => key !== 'policy' && !PLUGIN_KEYS.includes(key)) ||
           badDoc.auditFile !== undefined && typeof badDoc.auditFile !== 'string' ? badDoc : badDoc.policy !== undefined ? badDoc.policy : badDoc.ui) : undefined;
-        this.snapshot = { generatedBusy: !!this.generatedLock, revision: this.baseRevision, editRevision: this.editRevision, status: this.host?.status, writable: this.host?.writable, draft: this.draft, dirty: this.dirty, saving: this.saving, reloading: this.reloading, saved: this.saved, savedButNotLive: this.savedButNotLive, autosavePaused: this.autosavePaused, error: this.error, conflicted: this.conflicted, invalidSource: !!badDoc, invalidOriginal, auditFile: this.host?.value?.auditFile, receiptUnverified: this.receiptUnverified, connectionReset: this.connectionReset };
+        this.snapshot = { generatedBusy: !!this.generatedLock, revision: this.baseRevision, editRevision: this.editRevision, status: this.host?.status, writable: this.host?.writable, draft: this.draft, configSet: this.configurationSet(), canManageConfigs: this.canManageConfigs(), dirty: this.dirty, saving: this.saving, reloading: this.reloading, saved: this.saved, savedButNotLive: this.savedButNotLive, autosavePaused: this.autosavePaused, error: this.error, conflicted: this.conflicted, invalidSource: !!badDoc, invalidOriginal, auditFile: this.host?.value?.auditFile, receiptUnverified: this.receiptUnverified, connectionReset: this.connectionReset };
         for (const listener of this.listeners) listener();
       }
       subscribe = listener => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
@@ -486,13 +585,93 @@ window.__ModuleLoader__.load({
         if (!this.autosavePaused) { this.savedButNotLive = false; this.error = ''; }
         this.scheduleAutosave(); this.publish(); return true;
       }
+      viewToken() { return stable([this.generation, this.baseRevision, this.configSet?.activeConfigId ?? 'config-1']); }
+      matchesView(token, requireWritable = true) {
+        const current = this.form.getSnapshot();
+        const activeId = current.value?.ui?.schemaVersion === 4 ? current.value.ui.activeConfigId : 'config-1';
+        if (this.disposed || token !== this.viewToken()) return false;
+        // Recovery must work when desired and persisted selections/revisions differ.
+        if (!requireWritable) return true;
+        const knownActiveId = this.host.value?.ui?.schemaVersion === 4 ? this.host.value.ui.activeConfigId : 'config-1';
+        return current.revision === this.baseRevision && activeId === knownActiveId &&
+          current.status === 'ready' && current.writable && !invalidSource(current.value) && !invalidSource(current.user);
+      }
+      configurationSet() {
+        if (this.configSet) return this.storedDraft();
+        const { enabled, candidates, limits, defaultCandidateId } = clone(this.draft);
+        return { schemaVersion: 4, enabled, candidates, limits, activeConfigId: 'config-1', configs: [{ id: 'config-1', name: this.t('initialConfig'), ...(defaultCandidateId === undefined ? {} : { defaultCandidateId }), overrides: [] }] };
+      }
+      storedDraft() {
+        if (!this.configSet) return clone(this.draft);
+        const next = clone(this.configSet);
+        next.enabled = this.draft.enabled; next.limits = clone(this.draft.limits);
+        const base = new Map((this.configSet.candidates ?? []).map(row => [row.id, row]));
+        next.candidates = this.draft.candidates.map(row => base.has(row.id) ? { ...clone(base.get(row.id)), provider: row.provider, model: row.model, effort: row.effort } : clone(row));
+        const ids = new Set(next.candidates.map(row => row.id));
+        for (const preset of next.configs) preset.overrides = (preset.overrides ?? []).filter(row => ids.has(row.id));
+        const current = next.configs.find(item => item.id === next.activeConfigId);
+        if (current) {
+          if (this.draft.defaultCandidateId === undefined) delete current.defaultCandidateId; else current.defaultCandidateId = this.draft.defaultCandidateId;
+          current.overrides = this.draft.candidates.filter(row => row.name !== base.get(row.id)?.name || (row.description ?? '') !== (base.get(row.id)?.description ?? '')).map(({ id, name, description }) => ({ id, name, description: description ?? '' }));
+        }
+        return next;
+      }
+      canManageConfigs() {
+        return this.editable() && !this.dirty && !this.composing && !this.autosavePaused && !this.savedButNotLive && validDraft(this.draft);
+      }
+      availableConfigName(name, exceptId) {
+        return validConfigName(name) && !this.configurationSet().configs.some(row => row.id !== exceptId && configName(row.name).toLowerCase() === configName(name).toLowerCase());
+      }
+      async changeConfigSet(update) {
+        // Read current host state before capturing the collection. No pending manual
+        // edits, writes, generation or connection uncertainty may be discarded.
+        const before = stable([this.host.value, this.host.user]), revision = this.baseRevision;
+        this.read();
+        if (!this.canManageConfigs() || revision !== this.baseRevision || before !== stable([this.host.value, this.host.user])) return false;
+        const next = this.configurationSet();
+        if (update(next) === false || !validConfigSets(next)) return false;
+        this.cancelAutosave(); this.editRevision++;
+        this.configSet = next; this.draft = projectConfigSet(next);
+        this.dirty = true; this.saved = false; this.error = '';
+        this.publish();
+        return await this.save();
+      }
+      createConfig(name, copyCurrent = false) {
+        if (typeof copyCurrent !== 'boolean' || !this.availableConfigName(name) || this.configurationSet().configs.length >= 32) return Promise.resolve(false);
+        return this.changeConfigSet(next => {
+          let index = 1; while (next.configs.some(row => row.id === 'config-' + index)) index++;
+          const id = 'config-' + index;
+          const source = next.configs.find(row => row.id === next.activeConfigId);
+          const overrides = copyCurrent ? clone(source.overrides ?? []) : next.candidates.map(({ id, name }) => ({ id, name, description: '' }));
+          next.configs.push({ id, name: configName(name), ...(source.defaultCandidateId === undefined ? {} : { defaultCandidateId: source.defaultCandidateId }), overrides });
+          next.activeConfigId = id;
+        });
+      }
+      renameConfig(name) {
+        const activeId = this.configurationSet().activeConfigId;
+        if (!this.availableConfigName(name, activeId)) return Promise.resolve(false);
+        return this.changeConfigSet(next => { next.configs.find(row => row.id === next.activeConfigId).name = configName(name); });
+      }
+      switchConfig(id) {
+        return this.changeConfigSet(next => {
+          if (id === next.activeConfigId || !next.configs.some(row => row.id === id)) return false;
+          next.activeConfigId = id;
+        });
+      }
+      deleteConfig(id, confirmed = false) {
+        if (confirmed !== true) return Promise.resolve(false);
+        return this.changeConfigSet(next => {
+          if (id === next.activeConfigId || next.configs.length <= 1 || !next.configs.some(row => row.id === id)) return false;
+          next.configs = next.configs.filter(row => row.id !== id);
+        });
+      }
       // A generation baseline includes local edits (even edit-and-revert), saves,
       // connection generation and both host documents, not just the host revision.
       captureGenerated() {
         this.read();
         if (!this.editable() || this.dirty || this.composing || this.autosavePaused || this.savedButNotLive) return;
         return { revision: this.baseRevision, generation: this.generation, editRevision: this.editRevision,
-          draft: stable(this.draft), source: stable([this.host.value, this.host.user]) };
+          draft: stable(this.storedDraft()), source: stable([this.host.value, this.host.user]) };
       }
       matchesGenerated(expected, owner) {
         const current = this.form.getSnapshot();
@@ -500,7 +679,7 @@ window.__ModuleLoader__.load({
           current.status === 'ready' && current.writable && !invalidSource(current.value) && !invalidSource(current.user) &&
           expected.generation === this.generation && expected.editRevision === this.editRevision &&
           expected.revision === this.baseRevision && expected.revision === current.revision &&
-          expected.draft === stable(this.draft) && expected.source === stable([current.value, current.user]);
+          expected.draft === stable(this.storedDraft()) && expected.source === stable([current.value, current.user]);
       }
       lockGenerated(owner, expected) {
         if (!this.matchesGenerated(expected, owner)) return false;
@@ -514,7 +693,20 @@ window.__ModuleLoader__.load({
         // No editor.edit(), debounce or merge of service-controlled configuration.
         // The final synchronous fence and one explicit save are inseparable.
         if (!this.matchesGenerated(expected, owner)) return false;
-        const next = { ...clone(this.draft), candidates: clone(result.candidates), defaultCandidateId: result.defaultCandidateId };
+        let next;
+        if (this.configSet) {
+          const pool = this.draft.candidates;
+          const mapped = new Map();
+          for (const generated of result.candidates) {
+            const matches = pool.filter(row => routeKey(row) === routeKey(generated));
+            const target = matches.length === 1 ? matches[0] : undefined;
+            if (!target || mapped.has(target.id)) { this.error = this.t('draftPoolMismatch'); this.publish(); return false; }
+            mapped.set(target.id, generated);
+          }
+          const defaultEntry = [...mapped].find(([, row]) => row.id === result.defaultCandidateId);
+          if (!defaultEntry) return false;
+          next = { ...clone(this.draft), candidates: pool.map(row => mapped.has(row.id) ? { ...row, name: mapped.get(row.id).name, description: mapped.get(row.id).description ?? '' } : clone(row)), defaultCandidateId: defaultEntry[0] };
+        } else next = { ...clone(this.draft), candidates: clone(result.candidates), defaultCandidateId: result.defaultCandidateId };
         if (!validDraft(next) || !next.candidates.length || !next.candidates.some(row => row.id === next.defaultCandidateId)) return false;
         this.cancelAutosave(); this.generatedLock = undefined;
         this.editRevision++; this.draft = next; this.dirty = true; this.saved = false;
@@ -522,10 +714,18 @@ window.__ModuleLoader__.load({
       }
       addCandidate() {
         if (this.draft.candidates.length >= 128) return false;
-        let index = 1; while (this.draft.candidates.some(candidate => candidate.id === 'candidate-' + index)) index++;
+        // Do not resurrect an unsaved deletion with its old role overrides.
+        const reserved = new Set([...this.draft.candidates, ...(this.configSet?.candidates ?? [])].map(candidate => candidate.id));
+        let index = 1; while (reserved.has('candidate-' + index)) index++;
         // A fresh candidate is deliberately unfinished: empty strings block autosave
         // until the user picks an exact model and effort; never null, never a tier.
         return this.edit(next => next.candidates.push({ id: 'candidate-' + index, name: '', provider: '', model: '', effort: '', description: '' }));
+      }
+      removeCandidate(id) {
+        if (this.configSet && this.configurationSet().configs.some(row => row.defaultCandidateId === id)) {
+          this.error = this.t('poolDefaultInUse'); this.publish(); return false;
+        }
+        return this.edit(next => { next.candidates = next.candidates.filter(row => row.id !== id); });
       }
       resetConnection() {
         if (this.disposed) return;
@@ -573,9 +773,9 @@ window.__ModuleLoader__.load({
         this.read();
         if (this.disposed || this.saving || this.reloading || this.connectionReset || !this.dirty || !this.host.writable || this.host.status !== 'ready' || this.receiptUnverified) return false;
         if (this.conflicted || this.form.getSnapshot().revision !== this.baseRevision) { this.conflicted = true; this.publish(); return false; }
-        if (!this.editable() || !validDraft(this.draft)) { this.error = this.t('invalidDraft'); this.publish(); return false; }
+        if (!this.editable() || !validDraft(this.draft) || this.configSet && !validConfigSets(this.storedDraft())) { this.error = this.t('invalidDraft'); this.publish(); return false; }
         this.editRevision++;
-        const desired = clone(this.draft), revision = this.baseRevision, generation = this.generation;
+        const desired = this.storedDraft(), revision = this.baseRevision, generation = this.generation;
         // Only a verified receipt (or explicit reload) releases automatic saving.
         this.autosavePaused = true;
         this.saving = true; this.error = ''; this.saved = false; this.pendingDesired = desired; this.receiptUnverified = true; this.publish();
@@ -838,25 +1038,27 @@ window.__ModuleLoader__.load({
       const model = route && catalog.find(route.provider, route.model);
       const efforts = catalogEfforts(model, t);
       const currentModelKey = route ? modelKey(route) : '';
-      const button = (key, action, disabled) => h('button', { type: 'button', style: buttonStyle, disabled, onClick: action }, t(key));
+      const viewToken = editor.viewToken();
+      const guarded = action => (...args) => editor.matchesView(viewToken) && action(...args);
+      const button = (key, action, disabled) => h('button', { type: 'button', style: buttonStyle, disabled, onClick: key === 'cancel' ? () => editor.matchesView(viewToken, false) && action() : guarded(action) }, t(key));
       const label = (key, child) => h('label', { style: fieldStyle }, h('span', null, t(key)), child);
       const profile = item => item.provider + ' / ' + item.model + ' / ' + (item.effort === null ? 'null' : item.effort || '—');
       const stage = (key, children) => h('fieldset', { style: { minWidth: 0, margin: '16px 0', padding: 16, borderRadius: 8, border: '1px solid var(--dsw-alias-border-secondary, #777)' } }, h('legend', null, t(key)), children);
       const textInput = (key, row, field, maxLength) => h(field === 'description' ? 'textarea' : 'input', { style: field === 'description' ? { ...inputStyle, minHeight: 104, resize: 'vertical' } : inputStyle, ...(field === 'description' ? { rows: 4 } : {}), 'aria-label': t(key) + ' · ' + row.id,
-        value: row[field] ?? '', maxLength, disabled: blocked || !generator.editableDraft(), onChange: event => generator.editCandidate(row.id, { [field]: event.target.value }) });
+        value: row[field] ?? '', maxLength, disabled: blocked || !generator.editableDraft(), onChange: guarded(event => generator.editCandidate(row.id, { [field]: event.target.value })) });
       const statusKey = { idle: 'draftIdle', generating: 'draftGenerating', ready: 'draftReady', validating: 'draftValidating', applying: 'draftApplying', applied: 'draftApplied', error: 'draftFailed', stale: 'draftStale', conflict: 'draftConflict', cancelled: 'draftCancelled' }[state.status];
       return h('section', { 'data-draft-generator': true, style: { minWidth: 0, margin: '24px 0' } },
         h('h3', null, t('draftTitle')), h('p', { style: paragraphStyle }, t('draftIntro')),
         !state.available ? h('p', { role: 'status' }, t('draftUnavailable')) : null,
 
         stage('draftGenerator', [
-          label('chooseModel', h('select', { style: inputStyle, 'aria-label': t('draftGenerator'), disabled: inputBlocked || catalogState.status !== 'ready', value: currentModelKey, onChange: event => generator.selectGenerator(event.target.value) },
+          label('chooseModel', h('select', { style: inputStyle, 'aria-label': t('draftGenerator'), disabled: inputBlocked || catalogState.status !== 'ready', value: currentModelKey, onChange: guarded(event => generator.selectGenerator(event.target.value)) },
             h('option', { value: '', disabled: true }, t('chooseModel')),
             route && !model ? h('option', { value: currentModelKey, disabled: true }, profile(route)) : null,
             catalogState.groups.map(group => h('optgroup', { key: group.id, label: group.name + ' (' + group.id + ')', disabled: catalogState.failures.some(failure => failure.id === group.id) },
               group.models.map(item => h('option', { key: item.id, value: modelKey({ provider: group.id, model: item.id }) }, item.name === item.id ? item.id : item.name + ' — ' + item.id)))))),
           label('draftGeneratorEffort', h('select', { style: inputStyle, 'aria-label': t('draftGeneratorEffort'), disabled: inputBlocked || !model, value: route && route.effort !== '' ? effortKey(route.effort) : '',
-            onChange: event => { const option = efforts.find(item => effortKey(item.id) === event.target.value); if (option) generator.setGeneratorEffort(option.id); } },
+            onChange: guarded(event => { const option = efforts.find(item => effortKey(item.id) === event.target.value); if (option) generator.setGeneratorEffort(option.id); }) },
             h('option', { value: '', disabled: true }, t('chooseEffort')),
             route && route.effort !== '' && !efforts.some(item => item.id === route.effort) ? h('option', { value: effortKey(route.effort), disabled: true }, String(route.effort) + ' — ' + t('catalogUnverified')) : null,
             efforts.map(item => h('option', { key: effortKey(item.id), value: effortKey(item.id) }, item.name + (item.id === null ? '' : ' (' + item.id + ')'))))),
@@ -874,14 +1076,14 @@ window.__ModuleLoader__.load({
               catalogEfforts(catalog.find(group.id, item.id), t).map(effort => {
                 const tuple = { provider: group.id, model: item.id, effort: effort.id };
                 return h('label', { key: effortKey(effort.id), style: { display: 'flex', alignItems: 'center', gap: 12, minHeight: 44, overflowWrap: 'anywhere' } },
-                  h('input', { type: 'checkbox', style: { minWidth: 24, minHeight: 24 }, disabled: inputBlocked || !generator.routeAllowed(tuple), checked: state.input.scope.some(value => routeKey(value) === routeKey(tuple)), onChange: event => generator.toggleScope(tuple, event.target.checked) }), effort.name);
+                  h('input', { type: 'checkbox', style: { minWidth: 24, minHeight: 24 }, disabled: inputBlocked || !generator.routeAllowed(tuple), checked: state.input.scope.some(value => routeKey(value) === routeKey(tuple)), onChange: guarded(event => generator.toggleScope(tuple, event.target.checked)) }), effort.name);
               })))));
           })),
           h('p', { style: paragraphStyle }, t('draftSelected') + ': ' + state.input.scope.length + ' / 128'),
           h('ul', null, state.input.scope.map(item => h('li', { key: routeKey(item), style: { overflowWrap: 'anywhere' } }, profile(item)))),
           button('draftClearScope', () => generator.setScope([]), inputBlocked || !state.input.scope.length)
         ]),
-        label('draftRequirements', h('textarea', { style: { ...inputStyle, minHeight: 120, resize: 'vertical' }, 'aria-label': t('draftRequirements'), maxLength: 8000, value: state.input.requirements, disabled: inputBlocked, onChange: event => generator.setRequirements(event.target.value) })),
+        label('draftRequirements', h('textarea', { style: { ...inputStyle, minHeight: 120, resize: 'vertical' }, 'aria-label': t('draftRequirements'), maxLength: 8000, value: state.input.requirements, disabled: inputBlocked, onChange: guarded(event => generator.setRequirements(event.target.value)) })),
         h('p', { style: paragraphStyle }, state.input.requirements.length + ' / 8000'), h('p', { style: paragraphStyle }, t('draftCost')),
         blocked && !state.busy ? h('div', { role: 'status' }, h('p', { style: paragraphStyle }, t('draftProtected')),
           editorState.dirty && !editorState.receiptUnverified && !editorState.saving ? button('cancel', () => editor.reload(), editorState.reloading) : null) : null,
@@ -904,11 +1106,45 @@ window.__ModuleLoader__.load({
                 h('td', { style: { padding: 8, verticalAlign: 'top', overflowWrap: 'anywhere' } }, profile(row)),
                 h('td', { style: { padding: 8, verticalAlign: 'top' } }, textInput('draftDescription', row, 'description', 1000)),
                 h('td', { style: { padding: 8, verticalAlign: 'top' } }, button('draftRemove', () => generator.removeCandidate(row.id), blocked || !generator.editableDraft()))))))),
-          label('draftDefault', h('select', { style: inputStyle, 'aria-label': t('draftDefault'), value: state.draft.defaultCandidateId ?? '', disabled: blocked || !generator.editableDraft(), onChange: event => generator.setDefault(event.target.value) },
+          label('draftDefault', h('select', { style: inputStyle, 'aria-label': t('draftDefault'), value: state.draft.defaultCandidateId ?? '', disabled: blocked || !generator.editableDraft(), onChange: guarded(event => generator.setDefault(event.target.value)) },
             h('option', { value: '', disabled: true }, t('draftChooseDefault')), state.draft.candidates.map(row => h('option', { key: row.id, value: row.id }, row.name + ' — ' + row.id)))),
           h('label', { style: { display: 'flex', alignItems: 'start', gap: 12, margin: '16px 0' } },
-            h('input', { type: 'checkbox', style: { minWidth: 24, minHeight: 24 }, 'aria-label': t('draftConfirm'), checked: state.confirmed, disabled: blocked || !generator.editableDraft(), onChange: event => generator.confirm(event.target.checked) }), t('draftConfirm')),
+            h('input', { type: 'checkbox', style: { minWidth: 24, minHeight: 24 }, 'aria-label': t(editor.configSet ? 'draftConfirmPreset' : 'draftConfirm'), checked: state.confirmed, disabled: blocked || !generator.editableDraft(), onChange: guarded(event => generator.confirm(event.target.checked)) }), t(editor.configSet ? 'draftConfirmPreset' : 'draftConfirm')),
           button('draftApply', () => generator.validateAndApply(), blocked || !state.available || !generator.canApply())) : null);
+    }
+    function ConfigSetsPanel({ editor, state, t }) {
+      const [name, setName] = React.useState('');
+      const [deleteId, setDeleteId] = React.useState(undefined);
+      const viewToken = editor.viewToken();
+      const sets = state.configSet, blocked = !state.canManageConfigs;
+      const active = sets.configs.find(row => row.id === sets.activeConfigId);
+      const validNew = editor.availableConfigName(name), validRename = editor.availableConfigName(name, sets.activeConfigId);
+      const button = (key, action, off = blocked) => h('button', { type: 'button', style: buttonStyle, disabled: off, onClick: () => editor.matchesView(viewToken) && action() }, t(key));
+      const act = async operation => { if (!editor.matchesView(viewToken)) return; if (await operation()) { setName(''); setDeleteId(undefined); } };
+      return h('section', { 'data-config-sets': true, style: { minWidth: 0, margin: '24px 0' }, 'aria-label': t('configSets') },
+        h('h3', null, t('configSets')), h('p', { style: paragraphStyle }, t('configSetsHelp')),
+        h('label', { style: fieldStyle }, h('span', null, t('activeConfig')),
+          h('select', { style: inputStyle, 'aria-label': t('activeConfig'), value: sets.activeConfigId, disabled: blocked, onChange: event => { setDeleteId(undefined); if (editor.matchesView(viewToken)) void editor.switchConfig(event.target.value); } },
+            sets.configs.map(row => h('option', { key: row.id, value: row.id }, row.name)))),
+        h('p', { style: paragraphStyle }, t('configSwitchHelp')),
+        state.dirty || state.saving || state.receiptUnverified || state.savedButNotLive ? h('p', { role: 'status', style: paragraphStyle }, t('configNotConfirmed')) : null,
+        state.error ? h('p', { role: 'alert', style: paragraphStyle }, state.error) : null,
+        blocked ? h('p', { role: 'status', style: paragraphStyle }, t('configSetProtected')) : null,
+        h('details', null, h('summary', { style: { minHeight: 44, cursor: 'pointer', fontWeight: 600 } }, t('manageConfigs') + ' · ' + sets.configs.length + '/32'),
+          h('label', { style: { ...fieldStyle, marginTop: 16 } }, h('span', null, t('configName')),
+            h('input', { style: inputStyle, 'aria-label': t('configName'), maxLength: 120, value: name, disabled: blocked, placeholder: t('configNameHint'), onChange: event => setName(event.target.value) })),
+          name && !validRename ? h('p', { role: 'alert' }, t('invalidConfigName')) : null,
+          h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 16 } },
+            button('newConfig', () => act(() => editor.createConfig(name)), blocked || !validNew || sets.configs.length >= 32),
+            button('copyConfig', () => act(() => editor.createConfig(name, true)), blocked || !validNew || sets.configs.length >= 32),
+            button('renameConfig', () => act(() => editor.renameConfig(name)), blocked || !validRename || configName(name) === active?.name)),
+          h('p', { style: paragraphStyle }, t('configSetLimit')),
+          h('ul', { style: { listStyle: 'none', padding: 0, margin: 0 } }, sets.configs.map(row => h('li', { key: row.id, style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--dsw-alias-border-secondary, #777)' } },
+            h('span', { style: { flex: '1 1 200px', minWidth: 0, overflowWrap: 'anywhere' } }, row.name),
+            row.id === sets.activeConfigId ? h('span', null, t('configActiveBadge')) : h('button', { type: 'button', style: buttonStyle, disabled: blocked, 'aria-label': t('deleteConfig') + ' ' + row.name, onClick: () => { if (editor.matchesView(viewToken)) setDeleteId(row.id); } }, t('deleteConfig'))))),
+          deleteId && sets.configs.some(row => row.id === deleteId && row.id !== sets.activeConfigId) ? h('div', { role: 'group', 'aria-label': t('confirmDeleteConfig'), style: { marginTop: 16 } },
+            h('p', { role: 'alert', style: paragraphStyle }, t('deleteConfigWarning') + ' ' + sets.configs.find(row => row.id === deleteId).name),
+            h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12 } }, button('confirmDeleteConfig', () => act(() => editor.deleteConfig(deleteId, true))), button('cancelDeleteConfig', () => setDeleteId(undefined), false))) : null));
     }
     function RouterPage({ editor, catalog, generator, t, view }) {
       const state = React.useSyncExternalStore(editor.subscribe, editor.getSnapshot, editor.getSnapshot);
@@ -917,12 +1153,14 @@ window.__ModuleLoader__.load({
       const ui = state.draft ?? emptyDraft();
       const busy = state.generatedBusy || state.status !== 'ready' || !state.writable || state.saving || state.reloading || state.connectionReset || state.receiptUnverified || state.invalidSource;
       const disabled = busy || state.conflicted;
-      const edit = update => editor.edit(update);
+      const viewToken = editor.viewToken();
+      const edit = update => editor.matchesView(viewToken) && editor.edit(update);
       const button = (key, action, off = false) => h('button', { type: 'button', style: buttonStyle, disabled: off, onClick: action }, t(key));
-      const input = (key, value, set, type = 'text', off = disabled, maxLength) => h('label', { style: fieldStyle }, h('span', null, t(key)), h('input', { style: type === 'checkbox' ? { minWidth: 24, minHeight: 24 } : inputStyle, 'aria-label': t(key), type, disabled: off, maxLength, onCompositionStart: () => editor.setComposing(true), onCompositionEnd: () => editor.setComposing(false), ...(type === 'checkbox' ? { checked: !!value } : { value: value ?? '' }), onChange: event => set(type === 'checkbox' ? event.target.checked : type === 'number' ? Number(event.target.value) : event.target.value) }));
+      const input = (key, value, set, type = 'text', off = disabled, maxLength) => h('label', { style: fieldStyle }, h('span', null, t(key)), h('input', { style: type === 'checkbox' ? { minWidth: 24, minHeight: 24 } : inputStyle, 'aria-label': t(key), type, disabled: off, maxLength, onCompositionStart: () => editor.matchesView(viewToken) && editor.setComposing(true), onCompositionEnd: () => editor.matchesView(viewToken) && editor.setComposing(false), ...(type === 'checkbox' ? { checked: !!value } : { value: value ?? '' }), onChange: event => set(type === 'checkbox' ? event.target.checked : type === 'number' ? Number(event.target.value) : event.target.value) }));
       const group = (title, children) => h('fieldset', { style: { minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', border: '1px solid var(--dsw-alias-border-secondary, #777)', borderRadius: 8, padding: 16, margin: '16px 0' } }, h('legend', { style: { maxWidth: '100%', overflowWrap: 'anywhere' } }, title), children);
       const grid = children => h('div', { style: { display: 'grid', minWidth: 0, gridTemplateColumns: 'repeat(auto-fit,minmax(min(240px,100%),1fr))', gap: 16, alignItems: 'end' } }, children);
       const json = value => h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '100%' } }, JSON.stringify(value, null, 2));
+      const poolRows = [];
       const rows = ui.candidates.map((candidate, index) => {
         const set = (key, value) => edit(next => { if (next.candidates[index]?.id === candidate.id) next.candidates[index][key] = value; });
         const current = catalog?.find(candidate.provider, candidate.model);
@@ -931,7 +1169,7 @@ window.__ModuleLoader__.load({
         const failed = catalogState.failures.some(failure => failure.id === candidate.provider);
         const missing = !current && !!candidate.provider && !!candidate.model;
         const modelPicker = h('label', { style: fieldStyle }, h('span', null, t('chooseModel')),
-          h('select', { style: inputStyle, 'aria-label': t('chooseModel'), disabled, value: candidate.provider && candidate.model ? modelKey(candidate) : '', onChange: event => catalog?.select(editor, index, event.target.value, candidate) },
+          h('select', { style: inputStyle, 'aria-label': t('chooseModel'), disabled, value: candidate.provider && candidate.model ? modelKey(candidate) : '', onChange: event => catalog?.select(editor, index, event.target.value, candidate, viewToken) },
             !candidate.provider && !candidate.model ? h('option', { value: '', disabled: true }, t('chooseModel')) : null,
             missing ? h('option', { value: modelKey(candidate), disabled: true }, candidate.provider + ' / ' + candidate.model) : null,
             catalogState.groups.map(provider => h('optgroup', { key: provider.id, label: provider.name + ' (' + provider.id + ')', disabled: catalogState.status !== 'ready' || catalogState.failures.some(failure => failure.id === provider.id) },
@@ -939,12 +1177,20 @@ window.__ModuleLoader__.load({
           candidate.provider && candidate.model ? h('code', { style: { overflowWrap: 'anywhere', whiteSpace: 'normal' } }, candidate.provider + ' / ' + candidate.model) : null,
           missing ? h('span', { role: 'status' }, t(catalogState.status === 'ready' && !failed ? 'catalogMissing' : 'catalogUnverified')) : null);
         const effortPicker = h('label', { style: fieldStyle }, h('span', null, t('effort')),
-          h('select', { style: inputStyle, 'aria-label': t('effort'), value: candidate.effort === '' || candidate.effort === undefined ? '' : effortKey(candidate.effort), disabled: disabled || !current, onChange: event => catalog?.setEffort(editor, index, event.target.value, candidate) },
+          h('select', { style: inputStyle, 'aria-label': t('effort'), value: candidate.effort === '' || candidate.effort === undefined ? '' : effortKey(candidate.effort), disabled: disabled || !current, onChange: event => catalog?.setEffort(editor, index, event.target.value, candidate, viewToken) },
             h('option', { value: '', disabled: true }, t('chooseEffort')),
             !known && candidate.effort !== '' && candidate.effort !== undefined ? h('option', { value: effortKey(candidate.effort), disabled: true }, String(candidate.effort) + ' — ' + t('unknownEffort')) : null,
             options.map(option => h('option', { key: effortKey(option.id), value: effortKey(option.id) }, option.name + (option.id === null ? '' : ' (' + option.id + ')')))),
           candidate.effort === '' || candidate.effort === undefined ? h('span', { role: 'status' }, t('effortRequired')) : null,
           options.some(option => option.id === null) ? h('span', { role: 'status' }, t('noReasoning')) : null);
+        if (editor.configSet) {
+          poolRows.push(h('div', { key: candidate.id, 'data-pool-candidate': candidate.id }, group(candidate.id, [grid([modelPicker, effortPicker]), h('div', { style: { marginTop: 16 } }, button('remove', () => editor.matchesView(viewToken) && editor.removeCandidate(candidate.id), disabled))])));
+          return h('div', { key: candidate.id, 'data-candidate': candidate.id }, group(candidate.id, [
+            input('name', candidate.name, value => set('name', value), 'text', disabled, 120),
+            h('p', { style: { ...paragraphStyle, overflowWrap: 'anywhere' } }, candidate.provider + ' / ' + candidate.model + ' / ' + String(candidate.effort)),
+            input('description', candidate.description, value => set('description', value), 'text', disabled, 1000)
+          ]));
+        }
         return h('div', { key: index, 'data-candidate': candidate.id }, group(candidate.name || t('name') + ' ' + (index + 1), [
           grid([h('div', { style: fieldStyle }, input('name', candidate.name, value => set('name', value), 'text', disabled, 120), h('code', { 'aria-label': t('id'), style: { overflowWrap: 'anywhere', whiteSpace: 'normal' } }, t('id') + ': ' + candidate.id)), modelPicker, effortPicker]),
           h('div', { style: { marginTop: 16 } }, input('description', candidate.description, value => set('description', value), 'text', disabled, 1000)),
@@ -956,6 +1202,7 @@ window.__ModuleLoader__.load({
         state.status !== 'ready' ? h('p', { role: 'status' }, t(state.status === 'loading' ? 'loading' : 'unavailable')) : null,
         state.status === 'ready' && !state.writable ? h('p', { role: 'status' }, t('readOnly')) : null,
         state.invalidSource ? group(t('invalidSourceTitle'), [h('p', { role: 'alert' }, t('invalidSource')), h('details', null, h('summary', null, t('originalConfiguration')), json(state.invalidOriginal))]) : null,
+        h(ConfigSetsPanel, { editor, state, t }),
         h(CatalogPanel, { catalog, blocked: state.generatedBusy, t }),
         generator && catalog ? h(DraftWizard, { generator, editor, catalog, t }) : null,
         h('div', { 'data-autosave': true, style: { padding: '12px 0', background: 'var(--dsw-alias-background-primary, #fff)', borderBottom: '1px solid var(--dsw-alias-border-secondary, #777)' } },
@@ -963,17 +1210,18 @@ window.__ModuleLoader__.load({
           state.conflicted ? h('p', { role: 'alert' }, t('conflict')) : null,
           state.error ? h('p', { role: 'alert' }, state.error) : null,
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 8 } },
-            state.error && state.dirty && !state.receiptUnverified && !state.connectionReset && !state.conflicted ? button('retry', () => editor.save(), disabled || !validDraft(ui)) : null,
-            button(state.dirty && !state.receiptUnverified || state.connectionReset ? 'cancel' : 'refresh', () => editor.reload(), state.saving || state.reloading || state.generatedBusy))),
+            state.error && state.dirty && !state.receiptUnverified && !state.connectionReset && !state.conflicted ? button('retry', () => editor.matchesView(viewToken) && editor.save(), disabled || !validDraft(ui)) : null,
+            button(state.dirty && !state.receiptUnverified || state.connectionReset ? 'cancel' : 'refresh', () => editor.matchesView(viewToken, false) && editor.reload(), state.saving || state.reloading || state.generatedBusy))),
         h('details', { 'data-manual-editor': true, style: { marginTop: 24 } }, h('summary', { style: { minHeight: 44, cursor: 'pointer', fontWeight: 600 } }, t('manualTitle'), ' · ' + ui.candidates.length),
-        grid([input('enabled', ui.enabled, value => edit(next => { next.enabled = value; }), 'checkbox'),
+        grid([editor.configSet ? null : input('enabled', ui.enabled, value => edit(next => { next.enabled = value; }), 'checkbox'),
           h('label', { style: fieldStyle }, h('span', null, t('defaultCandidate')), h('select', { style: inputStyle, 'aria-label': t('defaultCandidate'), value: ui.defaultCandidateId ?? '', disabled, onChange: event => { const draft = editor.getSnapshot().draft; if (event.target.value === '' && !draft.enabled) edit(next => { delete next.defaultCandidateId; }); else if (draft.candidates.filter(candidate => candidate.id === event.target.value).length === 1) edit(next => { next.defaultCandidateId = event.target.value; }); } },
             h('option', { value: '', disabled: !!ui.enabled }, t('chooseDefault')),
             ui.defaultCandidateId && !ui.candidates.some(candidate => candidate.id === ui.defaultCandidateId) ? h('option', { value: ui.defaultCandidateId, disabled: true }, ui.defaultCandidateId) : null,
             ui.candidates.filter(candidate => candidate.id && ui.candidates.filter(other => other.id === candidate.id).length === 1).map(candidate => h('option', { key: candidate.id, value: candidate.id }, (candidate.name || candidate.id) + ' — ' + candidate.id))))]),
 
-        h('h3', null, t('candidates')), rows.length ? rows : h('p', { style: paragraphStyle }, t('noCandidates')),
-        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12 } }, button('addCandidate', () => editor.addCandidate(), disabled || ui.candidates.length >= 128)),
+        h('h3', null, t(editor.configSet ? 'presetRoles' : 'candidates')), rows.length ? rows : h('p', { style: paragraphStyle }, t('noCandidates')),
+        editor.configSet ? h('section', { 'data-shared-pool': true, style: { marginTop: 32 } }, h('h3', null, t('sharedPool')), h('p', { style: paragraphStyle }, t('sharedPoolHelp')), input('enabled', ui.enabled, value => edit(next => { next.enabled = value; }), 'checkbox'), poolRows) : null,
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12 } }, button('addCandidate', () => editor.matchesView(viewToken) && editor.addCandidate(), disabled || ui.candidates.length >= 128)),
         h('details', { style: { margin: '24px 0' } }, h('summary', null, t('advanced')),
           group(t('limits'), grid(['maxPendingStarts','maxActivePerModel','maxCreationsPerParent','metadataTimeoutMs'].map(key => input(key, ui.limits[key], value => edit(next => { next.limits[key] = value; }), 'number')))),
           h('p', { style: paragraphStyle }, t('authority')), h('p', { style: paragraphStyle }, t('executionEvidence'))))
@@ -1029,6 +1277,6 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.slots.inject(name, () => ctx.slots.register({ name, key }, component)), 'delegation-router: ' + name);
       }
     }
-    return { inject: ['slots', 'locale', 'configForms', 'remote', 'remote.settings', 'remote.session'], apply, draftRemoteDescriptors, catalogRemoteDescriptors, CatalogPanel, RouterEditor, RouterPage, DraftGenerator, DraftWizard, routeKey, ModelCatalog, normalizeCatalog, modelKey, catalogEfforts, effortKey, CATALOG_EVENTS, emptyDraft, draftFrom, normalizeAckUi, validDraft, dictionaries: { zh, en } };
+    return { inject: ['slots', 'locale', 'configForms', 'remote', 'remote.settings', 'remote.session'], apply, draftRemoteDescriptors, catalogRemoteDescriptors, CatalogPanel, RouterEditor, RouterPage, DraftGenerator, DraftWizard, routeKey, ModelCatalog, normalizeCatalog, modelKey, catalogEfforts, effortKey, CATALOG_EVENTS, emptyDraft, projectConfigSet, validConfigSets, ConfigSetsPanel, draftFrom, normalizeAckUi, validDraft, dictionaries: { zh, en } };
   }
 });
