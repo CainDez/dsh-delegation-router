@@ -2,28 +2,25 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import assert from 'node:assert/strict';
 import { normalizeConfig } from '../src/config.js';
-const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-function files(dir) { return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?files(resolve(dir,e.name)):[resolve(dir,e.name)]); }
-for(const file of files(resolve(root,'src')).filter(p=>p.endsWith('.js'))) {
-  const r=spawnSync(process.execPath,['--check',file],{encoding:'utf8'}); if(r.status!==0) throw new Error(r.stderr);
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const read = path => readFileSync(resolve(root, path), 'utf8');
+const sources = ['client.js', ...readdirSync(resolve(root, 'src')).filter(name => name.endsWith('.js')).map(name => 'src/' + name)];
+for (const file of sources) {
+  const result = spawnSync(process.execPath, ['--check', resolve(root, file)], { stdio: 'inherit' });
+  assert.equal(result.status, 0, 'Invalid JavaScript: ' + file);
 }
-const pkg=JSON.parse(readFileSync(resolve(root,'package.json'),'utf8'));
-for(const p of Object.values(pkg.exports).filter(p=>!p.includes('*'))) if(!existsSync(resolve(root,p))) throw new Error('Missing package export '+p);
-for(const p of ['locale/en-US.json','locale/zh-CN.json']) JSON.parse(readFileSync(resolve(root,p),'utf8'));
-const singleSample=JSON.parse(readFileSync(resolve(root,'examples/ui-glm.json'),'utf8'));
-normalizeConfig(singleSample.ui);
-if(singleSample.ui.enabled!==false)throw Error('Single sample must remain opt-in');
-const presetSample=JSON.parse(readFileSync(resolve(root,'examples/presets.json'),'utf8'));
-normalizeConfig(presetSample.ui);
-if(presetSample.ui.enabled!==false||Object.hasOwn(presetSample.ui,'teams'))throw Error('Preset sample must remain opt-in without retired Team settings');
-const defaults=normalizeConfig();
-if(defaults.defaultPreset!=='default-high'||defaults.presets.map(p=>p.effort).join(',')!=='low,high,max'||defaults.presets.some(p=>p.modelSource!=='parent'))throw Error('Inherited Low/High/Max defaults missing');
-if(!pkg.dsh.client.inject.includes('@deepseek-ai/dsh-api-remotes'))throw new Error('Native model catalog remote dependency missing');
-const browser=readFileSync(resolve(root,'client.js'),'utf8');
-if(!browser.includes("'remote.session'")||!browser.includes('this.ctx.remote.session.modelCatalog()'))throw new Error('Native catalog client binding missing');
-if(!browser.includes('window.__ModuleLoader__.load')||!browser.includes("'dsh-delegation-router#delegation-router'"))throw new Error('Browser configuration companion missing');
-const clientCheck=spawnSync(process.execPath,['--check',resolve(root,'client.js')],{encoding:'utf8'});
-if(clientCheck.status!==0)throw new Error(clientCheck.stderr);
-if(pkg.exports['./team-compat']||pkg.scripts['build:team'])throw Error('Retired Team surface must not be published');
-console.log('Syntax, exports, locales and sample presets verified. No host installation performed.');
+const pkg = JSON.parse(read('package.json'));
+for (const path of Object.values(pkg.exports).filter(path => !path.includes('*'))) assert.ok(existsSync(resolve(root, path)), 'Missing export: ' + path);
+for (const name of ['zh', 'zh-CN', 'en', 'en-US']) JSON.parse(read('locale/' + name + '.json'));
+const sample = JSON.parse(read('examples/candidates.json'));
+normalizeConfig(sample.ui);
+assert.equal(sample.ui.enabled, false, 'Example must stay opt-in');
+assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-api-remotes'));
+const client = read('client.js');
+assert.ok(client.includes('this.ctx.remote.session.modelCatalog()'));
+assert.ok(client.includes('window.__ModuleLoader__.load'));
+assert.ok(client.includes("'dsh-delegation-router#delegation-router'"));
+console.log('Syntax, exports, locales, sample and native client bindings verified.');

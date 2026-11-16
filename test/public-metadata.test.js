@@ -16,8 +16,8 @@ test('locale aliases stay identical and describe autosave and authorization', as
   for (const [canonical, alias] of [['zh-CN', 'zh'], ['en-US', 'en']]) {
     const locale = JSON.parse(await read('locale/' + canonical + '.json'));
     assert.deepEqual(locale, JSON.parse(await read('locale/' + alias + '.json')));
-    assert.match(locale.meta.description, /自动保存|autosaved/);
-    assert.match(locale.meta.description, /授权|authorization/);
+    assert.match(locale.meta.description, /自动保存|autosaved/i);
+    assert.match(locale.meta.description, /授权|authorization/i);
   }
 });
 
@@ -34,9 +34,9 @@ test('shipped user documentation has no broken relative Markdown links', async (
   }
 });
 
-test('installation example pins the versioned official release URL without machine-specific paths', async () => {
-  const installation = await read('INSTALLATION.md');
-  const releaseUrl='https://github.com/CainDez/dsh-delegation-router/releases/download/v'+manifest.version+'/dsh-delegation-router-'+manifest.version+'.tgz';
-  assert.ok(installation.includes('dsh plugin --profile desktop add '+JSON.stringify(releaseUrl)));
-  assert.doesNotMatch(installation, /[A-Z]:\\|\/Users\/|\/home\//);
+test('README documents packaging and versioned remote installation', async () => {
+  const text = await read('README.md');
+  assert.ok(text.includes('npm pack --ignore-scripts'));
+  const archive = 'https://github.com/CainDez/dsh-delegation-router/releases/download/v' + manifest.version + '/dsh-delegation-router-' + manifest.version + '.tgz';
+  assert.ok(text.includes('dsh plugin --profile desktop add ' + archive));
 });

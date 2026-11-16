@@ -11,13 +11,11 @@ function assertActivationOutput(native) {
   const exactActivation = kind?.const === 'activation' ||
     (Array.isArray(kind?.enum) && kind.enum.length === 1 && kind.enum[0] === 'activation');
   const required = schema?.required;
-  const field = Array.isArray(required) && required.includes('name') ? 'name' : 'subagentId';
   if (schema?.type !== 'object' || schema.oneOf || schema.anyOf || schema.allOf ||
-      !Array.isArray(required) || !required.includes('kind') || !required.includes(field) ||
-      kind?.type !== 'string' || !exactActivation || schema.properties?.[field]?.type !== 'string') {
-    rejectBeforeStart('NATIVE_OUTPUT_CONTRACT_UNSUPPORTED', 'Native subagent must declare an activation with a required name or durable subagentId');
+      !Array.isArray(required) || !required.includes('kind') || !required.includes('name') ||
+      kind?.type !== 'string' || !exactActivation || schema.properties?.name?.type !== 'string') {
+    rejectBeforeStart('NATIVE_OUTPUT_CONTRACT_UNSUPPORTED', 'Native subagent must declare an activation with a required model-facing name');
   }
-  return field;
 }
 const identity = value => typeof value === 'string' && !!value.trim() && value.length <= 500;
 const agentName = value => typeof value === 'string' && /^[a-z][a-z0-9-]{0,31}$/.test(value) && value !== 'lead';
@@ -33,19 +31,13 @@ async function childCatalog(ctx, exec) {
     return entries.map(({id,name}) => ({id,name}));
   } finally { source?.[Symbol.dispose]?.(); }
 }
-async function activationIdentity(ctx, exec, value, field, previous, requestedName) {
+async function activationIdentity(ctx, exec, value, previous, requestedName) {
   if (value?.kind !== 'activation') unknown('Native tool did not return an activation');
-  let childId, name;
-  if (field === 'name') {
-    name = value.name;
-    if (!agentName(name) || name !== requestedName) unknown('Native receipt does not match the requested direct child name');
-    const matches = (await childCatalog(ctx, exec)).filter(entry => entry.name === name);
-    if (matches.length !== 1 || !identity(matches[0].id) || previous.some(entry => entry.id === matches[0].id || entry.name === name)) unknown('Native name does not identify exactly one newly cataloged child');
-    childId = matches[0].id;
-  } else {
-    childId = value?.subagentId;
-    if (!identity(childId)) unknown('Native activation Session identity is missing');
-  }
+  const name = value.name;
+  if (!agentName(name) || name !== requestedName) unknown('Native receipt does not match the requested direct child name');
+  const matches = (await childCatalog(ctx, exec)).filter(entry => entry.name === name);
+  if (matches.length !== 1 || !identity(matches[0].id) || previous.some(entry => entry.id === matches[0].id || entry.name === name)) unknown('Native name does not identify exactly one newly cataloged child');
+  const childId = matches[0].id;
   if (childId === exec.agent.id) unknown('Native child identity aliases the parent');
   let child;
   try {
@@ -54,8 +46,8 @@ async function activationIdentity(ctx, exec, value, field, previous, requestedNa
     if (header?.id !== childId || header.origin !== 'subagent' || header.parentSession !== exec.agent.id) unknown('Native activation Session does not belong to this parent');
   } finally { child?.[Symbol.dispose]?.(); }
   // Preserve the model-facing receipt, but expose the independently verified Session
-  // identity separately. Never synthesize subagentId from a display name.
-  return {kind:'activation', ...(name === undefined ? {} : {name}), childId};
+  // identity separately. Never use a display name as a durable Session id.
+  return {kind:'activation', name, childId};
 }
 
 /** Same admitted definitions and staged pipeline as native/PTC; never calls execute directly. */
@@ -67,16 +59,16 @@ export function createNativeInvoker(ctx, pipeline, logNested = async () => {}) {
     const schema = ctx.tools.schemas(exec.agent, exec.toolSet).find(value => value.name === 'subagent');
     const params = schema?.parameters?.properties;
     if (!params?.provider || !params?.model || !params?.reasoning_effort) rejectBeforeStart('NATIVE_MODEL_SELECTION_DISABLED', 'Native subagent does not expose explicit child routing');
-    const identityField = assertActivationOutput(native);
+    assertActivationOutput(native);
     if (typeof ctx.sessionQuery?.observeSession !== 'function') rejectBeforeStart('NATIVE_IDENTITY_UNAVAILABLE', 'Host Session observation is required to audit a native child');
-    if (identityField === 'name' && params.name?.type !== 'string') rejectBeforeStart('NATIVE_IDENTITY_UNAVAILABLE', 'Native tool must admit an exact requested child name');
-    const requestedName = identityField === 'name' ? 'router-' + randomUUID().replaceAll('-', '').slice(0,24) : undefined;
+    if (params.name?.type !== 'string') rejectBeforeStart('NATIVE_IDENTITY_UNAVAILABLE', 'Native tool must admit an exact requested child name');
+    const requestedName = 'router-' + randomUUID().replaceAll('-', '').slice(0,24);
     let previous;
-    try { if (identityField === 'name') previous = await childCatalog(ctx, exec); }
+    try { previous = await childCatalog(ctx, exec); }
     catch { rejectBeforeStart('NATIVE_IDENTITY_UNAVAILABLE', 'Host parent subagentCatalog cannot be read before dispatch'); }
     const input = {
       callId: String(exec.callId) + ':router', rootCallId: exec.rootCallId ?? exec.callId,
-      name: 'subagent', schema, arguments: {...args,...(requestedName ? {name:requestedName} : {})}, agent: exec.agent, toolSet: exec.toolSet,
+      name: 'subagent', schema, arguments: {...args,name:requestedName}, agent: exec.agent, toolSet: exec.toolSet,
       parent: exec.token, signal: exec.signal
     };
     let dispatched = false;
@@ -88,8 +80,11 @@ export function createNativeInvoker(ctx, pipeline, logNested = async () => {}) {
         try {
           const current = ctx.tools.executable('subagent', exec.agent, exec.toolSet);
           if (current !== native) rejectBeforeStart('NATIVE_TOOL_CHANGED', 'Native subagent definition changed during preparation; no child was created');
-          if (assertActivationOutput(current) !== identityField) rejectBeforeStart('NATIVE_TOOL_CHANGED', 'Native activation identity contract changed during preparation');
-          if (requestedName && prepared.exec.arguments?.name !== requestedName) rejectBeforeStart('NATIVE_TOOL_CHANGED', 'Native preparation changed the bound child name');
+          assertActivationOutput(current);
+          if (prepared.exec.arguments?.name !== requestedName) rejectBeforeStart('NATIVE_TOOL_CHANGED', 'Native preparation changed the bound child name');
+          for (const key of ['provider','model','reasoning_effort']) {
+            if (prepared.exec.arguments?.[key] !== args[key]) rejectBeforeStart('NATIVE_ROUTE_CHANGED','Native preparation changed the selected child route');
+          }
           const checked = beforeDispatch?.();
           if (checked && typeof checked.then === 'function') {
             void Promise.resolve(checked).catch(() => {});
@@ -127,7 +122,7 @@ export function createNativeInvoker(ctx, pipeline, logNested = async () => {}) {
       if (!dispatched) error.definitelyNotStarted = true;
       throw error;
     }
-    try { return await activationIdentity(ctx, exec, result.value, identityField, previous, requestedName); }
+    try { return await activationIdentity(ctx, exec, result.value, previous, requestedName); }
     catch (error) { if (!dispatched && error && typeof error === 'object') error.definitelyNotStarted = true; throw error; }
   };
 }

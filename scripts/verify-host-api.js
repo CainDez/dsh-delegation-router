@@ -44,33 +44,33 @@ try {
  const {Service}=await import(pathToFileURL(hostRequire.resolve('@deepseek-ai/cordis')).href);
  const {createVolatile,isVolatile}=await import(pathToFileURL(hostRequire.resolve('@deepseek-ai/cosmokit')).href);
  assert.equal(RouterConfig.dict.ui.meta.volatile,true);
- assert.equal(RouterConfig.dict.policy.meta.volatile,true);
+ assert.equal(RouterConfig.dict.policy,undefined,'single ui entry; the policy alias stays removed');
  const unwrap=config=>Object.fromEntries(Object.entries(config).map(([k,v])=>[k,isVolatile(v)?v.get():v]));
- const base=JSON.parse(await readFile(join(root,'examples/ui-glm.json'),'utf8'));
- assert.equal(compilePluginConfig(unwrap(RouterConfig({}))).policy.enabled,false);
- assert.equal(RouterConfig({policy:{enabled:false}}).ui.get(),undefined);
+ const base=JSON.parse(await readFile(join(root,'examples/candidates.json'),'utf8'));
+ const emptyEntry=compilePluginConfig(unwrap(RouterConfig({})));
+ assert.equal(emptyEntry.policy.schemaVersion,3);assert.equal(emptyEntry.policy.enabled,false);assert.deepEqual(emptyEntry.policy.candidates,[]);
  const parent=Object.freeze({id:'detached-root',options:Object.freeze({provider:'unchanged-parent',model:'unchanged-model'}),session:{header:{origin:'user'},requestHeader:()=>({config:{provider:'unchanged-parent',model:'unchanged-model',reasoningEffort:'high'}})}});
  const {createLifecycleEmitter}=await import(new URL('./types/lifecycle.js',pathToFileURL(hostRequire.resolve('@deepseek-ai/dsh-subagent'))).href);
  const results=[];
  {
-  const compiled=compilePluginConfig(unwrap(RouterConfig({...base,ui:{...base.ui,enabled:true,teams:{enabled:false}},auditFile:join(tmp,'ordinary.jsonl')})));
+  const compiled=compilePluginConfig(unwrap(RouterConfig({...base,ui:{...base.ui,enabled:true},auditFile:join(tmp,'ordinary.jsonl')})));
   const registered=[];const handlers=new Map();const fiber={};
   const childSession={id:'detached-child',header:{id:'detached-child',origin:'subagent',parentSession:parent.id},requestHeader:()=>undefined};
-  const ctx={sessionProjections:{register:async()=>({stateOf:()=>compiled.policy.presets.map(({provider,model})=>({provider,model}))})},tools:{register:tool=>registered.push(tool),executable:()=>undefined},agents:{get:id=>id===parent.id?parent:undefined},llm:{},get:name=>name==='sessions'?{get:id=>id===childSession.id?childSession:undefined}:undefined,fiber,on:(name,fn)=>handlers.set(name,fn),effect:fn=>cleanup.push(fn()),logger:{error(){}}};
+  const ctx={sessionProjections:{register:async()=>({stateOf:()=>compiled.policy.candidates.map(({provider,model})=>({provider,model}))})},tools:{register:tool=>registered.push(tool),executable:()=>undefined},agents:{get:id=>id===parent.id?parent:undefined},llm:{},get:name=>name==='sessions'?{get:id=>id===childSession.id?childSession:undefined}:undefined,fiber,on:(name,fn)=>handlers.set(name,fn),effect:fn=>cleanup.push(fn()),logger:{error(){}}};
   const instance=Object.create(Router.prototype);
-  Object.defineProperties(instance,{ctx:{value:ctx},policy:{value:compiled.policy},auditFile:{value:compiled.auditFile},configSource:{value:{ui:createVolatile({...base.ui,enabled:true,teams:{enabled:false}}),auditFile:compiled.auditFile}}});
+  Object.defineProperties(instance,{ctx:{value:ctx},policy:{value:compiled.policy},auditFile:{value:compiled.auditFile},configSource:{value:{ui:createVolatile({...base.ui,enabled:true}),auditFile:compiled.auditFile}}});
   await instance[Service.init]();
   const status=await registered.find(t=>t.name==='router_status').execute({}, {agent:parent});
   assert.deepEqual(status.parentRoute,{provider:'unchanged-parent',model:'unchanged-model',effort:'high'});
   assert.deepEqual(registered.map(t=>t.name),['router_status','router_reconcile','delegation_routes','routed_subagent']);
-  assert.throws(()=>handlers.get('internal/config')(fiber,()=>({ui:{schemaVersion:2,enabled:true,presets:[]},auditFile:compiled.auditFile})),{code:'INVALID_CONFIG'});
+  assert.throws(()=>handlers.get('internal/config')(fiber,()=>({ui:{schemaVersion:3,enabled:true,candidates:[]},auditFile:compiled.auditFile})),{code:'INVALID_CONFIG'});
   assert.equal(instance.configuration().policy.enabled,true);
   instance.manager.inFlight++;
-  assert.throws(()=>handlers.get('internal/config')(fiber,()=>({...base,ui:{...base.ui,enabled:true,teams:{enabled:false},limits:{maxPendingStarts:1}},auditFile:compiled.auditFile})),{code:'CONFIG_BUSY'});
+  assert.throws(()=>handlers.get('internal/config')(fiber,()=>({...base,ui:{...base.ui,enabled:true,limits:{maxPendingStarts:1}},auditFile:compiled.auditFile})),{code:'CONFIG_BUSY'});
   instance.manager.inFlight--;
   const settled=[];const originalSettle=instance.manager.settle;
   instance.manager.settle=(pid,id)=>settled.push([pid,id]);
-  // rc.1/rc.2 SubagentRunInfo shape, supplied by this detached harness, NOT a manager activation.
+  // Detached lifecycle event fixture; no manager activation or real child is created.
   const info=Object.freeze({runId:'detached-api-run',provider:'local',parentSessionId:parent.id,id:childSession.id,local:true});
   const carrier={agent:parent};const dispatched=[],pending=[],warnings=[];
   assert.equal(typeof createLifecycleEmitter,'function','Host must expose createLifecycleEmitter; no version skip');
@@ -89,17 +89,21 @@ try {
   instance.manager.settle=originalSettle;
   results.push({shippedLifecycleEmitter:true,detachedLifecyclePayloadDispatch:true,singlePayloadCallback:true,ownedSessionSettlement:true,registered:registered.map(t=>t.name),parentRoute:status.parentRoute,realRefRead:true,preSaveVeto:true});
  }
- const inheritedParent={id:'detached-inherited-root',options:Object.freeze({provider:'stale-created',model:'stale-model'}),session:{header:{origin:'user'},requestHeader:()=>({config:{provider:'openai-codex',model:'gpt-6.1-sol',reasoningEffort:'max'}})}};
- const {createDefaultPresets}=await import('../src/default-presets.js');
- const inheritedConfig={ui:{schemaVersion:2,enabled:true,presets:createDefaultPresets(),defaultPreset:'default-high',teams:{enabled:false}},auditFile:join(tmp,'inherited.jsonl')};
- const inheritedTools=[];const resolved=[];const preflights=[];
- const inheritedCtx={sessionProjections:{register:async()=>({stateOf:()=>null})},tools:{register:tool=>inheritedTools.push(tool)},agents:{get:id=>id===inheritedParent.id?inheritedParent:undefined},llm:{async resolveModelInfo(provider,model){resolved.push({provider,model});return {provider,model,inputModalities:['text'],contextWindow:200000,reasoning:{efforts:[{id:'low'},{id:'high'},{id:'max'}]}};},async resolveCallConfig(options){preflights.push(options);return options;}},get:()=>undefined,on(){},effect:fn=>cleanup.push(fn()),logger:{error(){}}};
- const inheritedInstance=Object.create(Router.prototype);Object.defineProperties(inheritedInstance,{ctx:{value:inheritedCtx},configSource:{value:inheritedConfig},policy:{value:compilePluginConfig(inheritedConfig).policy},auditFile:{value:inheritedConfig.auditFile}});await inheritedInstance[Service.init]();
- const listing=await inheritedTools.find(t=>t.name==='delegation_routes').execute({}, {agent:inheritedParent,signal:new AbortController().signal});
- assert.equal(listing.defaultPreset,'default-high');assert.equal(listing.presets.length,3);assert.deepEqual(listing.presets[1].resolvedModel,{provider:'openai-codex',model:'gpt-6.1-sol'});assert.equal(listing.presets[1].effort,'high');assert.equal('selected' in listing,false);assert.deepEqual(resolved,[]);assert.deepEqual(preflights,[]);assert.equal(listing.policy_revision,inheritedInstance.runtime.revision);
+ // Fixed-candidate planning block: with no native model-selection policy the only authorized
+ // route is the captured parent request route, so this candidate is deliberately equal to it.
+ const rootParent={id:'detached-fixed-root',options:Object.freeze({provider:'stale-created',model:'stale-model'}),session:{header:{origin:'user'},requestHeader:()=>({config:{provider:'openai-codex',model:'gpt-6.1-sol',reasoningEffort:'max'}})}};
+ const fixedCandidate={id:'candidate-main',name:'Main analysis',provider:'openai-codex',model:'gpt-6.1-sol',effort:'high',description:'Exact fixed route checked against current host metadata'};
+ const fixedConfig={ui:{schemaVersion:3,enabled:true,candidates:[fixedCandidate],defaultCandidateId:'candidate-main'},auditFile:join(tmp,'fixed-candidate.jsonl')};
+ const fixedTools=[];const resolved=[];const preflights=[];
+ const fixedCtx={sessionProjections:{register:async()=>({stateOf:()=>null})},tools:{register:tool=>fixedTools.push(tool)},agents:{get:id=>id===rootParent.id?rootParent:undefined},llm:{async resolveModelInfo(provider,model){resolved.push({provider,model});return {provider,model,inputModalities:['text'],contextWindow:200000,reasoning:{efforts:[{id:'low'},{id:'high'},{id:'max'}]}};},async resolveCallConfig(options){preflights.push(options);return options;}},get:()=>undefined,on(){},effect:fn=>cleanup.push(fn()),logger:{error(){}}};
+ const fixedInstance=Object.create(Router.prototype);Object.defineProperties(fixedInstance,{ctx:{value:fixedCtx},configSource:{value:fixedConfig},policy:{value:compilePluginConfig(fixedConfig).policy},auditFile:{value:fixedConfig.auditFile}});await fixedInstance[Service.init]();
+ const listing=await fixedTools.find(t=>t.name==='delegation_routes').execute({}, {agent:rootParent,signal:new AbortController().signal});
+ assert.equal(listing.defaultCandidateId,'candidate-main');assert.equal(listing.candidates.length,1);
+ assert.equal(listing.candidates[0].id,'candidate-main');assert.equal(listing.candidates[0].provider,'openai-codex');assert.equal(listing.candidates[0].model,'gpt-6.1-sol');assert.equal(listing.candidates[0].effort,'high');
+ assert.equal('selected' in listing,false);assert.deepEqual(resolved,[]);assert.deepEqual(preflights,[]);assert.equal(listing.policy_revision,fixedInstance.runtime.revision);
  // Exercise the actual creation planner separately; this validates host metadata/options without dispatching a child.
- const plan=await inheritedInstance.runtime.plan(inheritedParent,{prompt:'Detached creation plan validation',description:'Host API check',policy_revision:listing.policy_revision},new AbortController().signal);
- assert.deepEqual(plan.options,{provider:'openai-codex',model:'gpt-6.1-sol',reasoningEffort:'high'});assert.equal(plan.route.reason,'default-preset');assert.deepEqual(preflights,[plan.options]);assert.deepEqual(resolved,[{provider:'openai-codex',model:'gpt-6.1-sol'}]);assert.equal(inheritedParent.options.model,'stale-model');
+ const plan=await fixedInstance.runtime.plan(rootParent,{prompt:'Detached creation plan validation',description:'Host API check',policy_revision:listing.policy_revision},new AbortController().signal);
+ assert.deepEqual(plan.options,{provider:'openai-codex',model:'gpt-6.1-sol',reasoningEffort:'high'});assert.equal(plan.route.candidateId,'candidate-main');assert.equal(plan.route.reason,'default-candidate');assert.deepEqual(preflights,[plan.options]);assert.deepEqual(resolved,[{provider:'openai-codex',model:'gpt-6.1-sol'}]);assert.equal(rootParent.options.model,'stale-model');
  // Capture the shipped tool definition in detached registration services; never execute it.
  const {apply:registerNativeTool}=await import(pathToFileURL(hostRequire.resolve('@deepseek-ai/dsh-tool-subagent')).href);
  const nativeDefinitions=[];let nativeStarts=0;
@@ -133,7 +137,7 @@ try {
  const detachedCtx={
   tools:{executable:()=>detachedDefinition,schemas:()=>[{name:'subagent',parameters:nativeDefinition.parameters}],checkGuards:()=>undefined},
   sessionQuery:{async observeSession(id){return {
-   header:id===inheritedParent.id?{id}:{id,origin:'subagent',parentSession:inheritedParent.id},
+   header:id===rootParent.id?{id}:{id,origin:'subagent',parentSession:rootParent.id},
    projections:{values:{subagentCatalog:catalog}},[Symbol.dispose](){observationCloses++;}
   };}},
   async waterfall(...args){return args.at(-1)();},events:{dispatch:()=>[]},logger:{warn:message=>{throw Error(message);}}
@@ -142,7 +146,7 @@ try {
  const pipeline=Object.fromEntries(Object.keys(pipelineCalls).map(stage=>[stage,async(...args)=>{pipelineCalls[stage]++;return realPipeline[stage](...args);} ]));
  const invoke=createNativeInvoker(detachedCtx,pipeline);
  const receipt=await invoke({prompt:'Detached receipt contract only',description:'No child creation',provider:'p',model:'m',reasoning_effort:'high'},
-  {agent:inheritedParent,token:{},toolSet:{},signal:new AbortController().signal,callId:'detached-output-contract'});
+  {agent:rootParent,token:{},toolSet:{},signal:new AbortController().signal,callId:'detached-output-contract'});
  assert.deepEqual(receipt,{kind:'activation',name:catalog[0].name,childId});
  assert.match(receipt.name,/^router-[a-f0-9]{24}$/);assert.notEqual(receipt.name,receipt.childId);
  assert.deepEqual(pipelineCalls,{prepare:1,dispatch:1,complete:1});assert.equal(observationCloses,3);assert.equal(detachedBodies,1);
@@ -152,7 +156,7 @@ try {
   nativeDispatchCompatible,detachedNameReceiptMapped:true,shippedPipeline:true,verifiedOwnedSessionId:true,observationCloses,
   nativeToolExecuted:false,detachedBodies,nativeActivationsStarted:nativeStarts,pipelineCalls};
  assert.deepEqual(sideEffects,{networkAttempts:0,processAttempts:0});
- console.log(JSON.stringify({hostVersion:JSON.parse(await readFile(resolve(process.argv[2]),'utf8')).version,realHostSchemaAndToolLibrary:true,detachedServiceHarness:true,nativeOutputContract,nativeDispatchCompatible,results,inheritedCapturedRequestRatherThanStaleOptions:true,exactDefaultHighRatherThanParentMax:true,liveCordisMount:false,realManagerActivation:false,agentsCreated:0,profileChanged:false,...sideEffects,paidCalls:0},null,2));
+ console.log(JSON.stringify({hostVersion:JSON.parse(await readFile(resolve(process.argv[2]),'utf8')).version,realHostSchemaAndToolLibrary:true,detachedServiceHarness:true,nativeOutputContract,nativeDispatchCompatible,results,capturedRequestRouteRatherThanStaleOptions:true,exactCandidateEffortRatherThanParentEffort:true,fixedCandidateAuthorizedByParentRouteFallback:true,liveCordisMount:false,realManagerActivation:false,agentsCreated:0,profileChanged:false,...sideEffects,paidCalls:0},null,2));
 }finally{
  for(const dispose of cleanup)if(typeof dispose==='function')dispose();
  hook.deregister();

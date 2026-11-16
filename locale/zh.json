@@ -1,11 +1,10 @@
 {
   "meta": {
     "title": "委派模型路由",
-    "description": "Low / High / Max 委派预设，默认继承主模型、精确校验推理档位，设置自动保存；遵守宿主授权，不切换主 Agent。"
+    "description": "用户维护精确候选模型（provider / model / 思考档位与一个默认项），主 Agent 创建子 Agent 时直接选择；设置自动保存，遵守宿主授权，不切换主 Agent。"
   },
   "config": {
-    "ui": "委派预设（规范入口 ui，仍受宿主授权限制）",
-    "policy": "policy（已弃用的读取兼容别名；规范编辑器保存为 ui）",
+    "ui": "候选模型配置（规范入口 ui，仍受宿主授权限制）",
     "auditFile": "独立审计日志绝对路径（每个运行配置单独使用）"
   }
 }

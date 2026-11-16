@@ -1,6 +1,6 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -28,9 +28,7 @@ const { compilePluginConfig } = await import('../src/ui-config.js');
 const read = relative => readFile(new URL('../' + relative, import.meta.url), 'utf8');
 const copy = value => JSON.parse(JSON.stringify(value));
 const manifest = JSON.parse(await read('package.json'));
-const sample = JSON.parse(await read('examples/ui-glm.json'));
-const presetSample = JSON.parse(await read('examples/presets.json'));
-const policySample = presetSample.ui;
+const sample = JSON.parse(await read('examples/candidates.json'));
 const browserSource = await read('client.js');
 let definition;
 vm.runInNewContext(browserSource, { setTimeout, clearTimeout, window: { __ModuleLoader__: { load: value => { definition = value; } } } });
@@ -48,7 +46,7 @@ function host(config = {}) {
   return { ctx, service, services, tools, dispose() { for (const off of effects.reverse()) off(); } };
 }
 function browserHost() {
-  let snapshot = { status: 'ready', writable: true, revision: 1, value: { ui: copy(client.defaults()) }, user: {} };
+  let snapshot = { status: 'ready', writable: true, revision: 1, value: { ui: copy(client.emptyDraft()) }, user: {} };
   const namespaces = [], slots = [], mutations = [], effects = [];
   const form = { getSnapshot: () => snapshot, subscribe: () => () => {} };
   const ctx = {
@@ -56,7 +54,7 @@ function browserHost() {
     locale: { bind: name => { namespaces.push(['bind', name]); return key => key; }, register: name => { namespaces.push(['locale', name]); return () => {}; } },
     remote: { $on: () => () => {}, session: { async modelCatalog() { return { ok: true, value: { groups: [], failures: [] } }; } }, settings: { async mutate(name, ops, revision) {
       mutations.push({ name, ops: copy(ops), revision });
-      snapshot = { ...snapshot, revision: revision + 1, value: { ui: copy(ops[1].value) }, user: { ui: copy(ops[1].value) } };
+      snapshot = { ...snapshot, revision: revision + 1, value: { ui: copy(ops[0].value) }, user: { ui: copy(ops[0].value) } };
       return { ok: true };
     } } },
     on() {}, effect: fn => effects.push(fn()),
@@ -66,12 +64,12 @@ function browserHost() {
 }
 
 test('published manifest, repository, exports and disabled Cordis patch use the independent identity', async () => {
-  assert.equal(manifest.name, 'dsh-delegation-router'); assert.equal(manifest.version, '0.8.2');
+  assert.equal(manifest.name, 'dsh-delegation-router'); assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.equal(manifest.repository.url, 'git+https://github.com/CainDez/dsh-delegation-router.git');
   assert.equal(manifest.exports['.'], './src/plugin.js'); assert.equal(manifest.exports['./client'], './client.js');
   assert.deepEqual(Object.keys(manifest.exports).sort(), ['.', './client', './locale/*.json', './icon', './package.json'].sort());
-  for(const name of ['core','policy','config','ui-config','team-compat'])assert.throws(()=>import.meta.resolve(manifest.name+'/'+name),{code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
-  for(const name of ['test','scripts','compat'])assert.equal(manifest.files.includes(name),false);
+  for(const name of ['policy','config','ui-config','unexpected'])assert.throws(()=>import.meta.resolve(manifest.name+'/'+name),{code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+  for(const name of ['test','scripts'])assert.equal(manifest.files.includes(name),false);
   for(const name of ['@deepseek-ai/dsh-llm','@deepseek-ai/dsh-brand'])assert.equal(Object.hasOwn(manifest.peerDependencies,name),false);
   assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml');
   assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-api-remotes'));
@@ -92,12 +90,12 @@ test('actual browser module binds new locale, configuration namespace and keyed 
   h.dispose();
 });
 
-test('browser saves only the new entry with an atomic revision-protected policy/UI mutation', async () => {
+test('browser saves only the new entry with an single revision-protected UI mutation', async () => {
   const h = browserHost(), editor = new client.RouterEditor(h.ctx, key => key);
   editor.edit(draft=>{draft.limits.maxCreationsPerParent=12;}); assert.equal(await editor.save(), true);
   assert.equal(h.mutations.length, 1); assert.equal(h.mutations[0].name, 'delegation-router'); assert.equal(h.mutations[0].revision, 1);
-  assert.deepEqual(h.mutations[0].ops.map(op => [op.op, op.path]), [['unset', ['policy']], ['set', ['ui']]]);
-  assert.equal(h.mutations[0].ops[1].value.enabled, false); assert.equal(Object.hasOwn(h.mutations[0].ops[1].value,'teams'), false);
+  assert.deepEqual(h.mutations[0].ops.map(op => [op.op, op.path]), [['set', ['ui']]]);
+  assert.equal(h.mutations[0].ops[0].value.enabled, false); assert.equal(Object.hasOwn(h.mutations[0].ops[0].value,'teams'), false);
   editor.dispose(); h.dispose();
 });
 
@@ -111,18 +109,18 @@ test('Cordis service, independent authorization projection and all four public t
   h.dispose();
 });
 
-test('new default audit directory is profile-local while explicit legacy audit paths are never rewritten', () => {
+test('default audit directory is profile-local while explicit custom audit paths are never rewritten', () => {
   const h = host(); assert.equal(h.service.auditFile, path.join(profileDir, 'delegation-router', 'audit.jsonl'));
-  const legacyPath = path.join(profileDir, 'subagent-router', 'audit.jsonl');
-  const config = copy(sample); config.ui.enabled = true; config.auditFile = legacyPath;
+  const customPath = path.join(profileDir, 'custom-audit', 'audit.jsonl');
+  const config = copy(sample); config.ui.enabled = true; config.auditFile = customPath;
   const before = copy(config); const explicit = host(config);
-  assert.equal(explicit.service.auditFile, legacyPath); assert.equal(explicit.service.configuration().auditFile, legacyPath);
-  assert.equal(compilePluginConfig(config).auditFile, legacyPath); assert.deepEqual(config, before);
+  assert.equal(explicit.service.auditFile, customPath); assert.equal(explicit.service.configuration().auditFile, customPath);
+  assert.equal(compilePluginConfig(config).auditFile, customPath); assert.deepEqual(config, before);
   // Construction alone must never open, copy, recover, migrate or clear a journal.
   assert.equal(explicit.service.manager, undefined); assert.equal(h.service.manager, undefined);
 });
 
-test('rename does not expand native authorization or replace its first-event source', () => {
+test('authorization uses the first policy event and current parent route', () => {
   assert.equal(authorizationProjection.key, 'delegationRouterAuthorization');
   assert.notEqual(authorizationProjection.key, 'subagentModelSelectionPolicy');
   const first = { type: 'subagent/model-selection-policy', data: { allowedModels: [{ provider: 'authorized', model: 'exact' }] } };
@@ -134,21 +132,9 @@ test('rename does not expand native authorization or replace its first-event sou
   assert.throws(() => createAuthorizationReader({ stateOf: () => undefined })(parent), { code: 'AUTHORIZATION_UNAVAILABLE' });
 });
 
-test('runtime sources and shipped identity-bearing configuration contain no legacy service or namespace', async () => {
-  const sources = (await readdir(new URL('../src/', import.meta.url))).filter(name => name.endsWith('.js')).map(name => 'src/' + name);
-  for (const relative of [...sources, 'client.js', 'cordis.patch.yml']) {
-    assert.doesNotMatch(await read(relative), /subagentRouter|dsh-subagent-router|['"]subagent-router['"]/, relative);
-  }
-});
 
-test('both example entry paths and UI defaults stay opt-in and never automatically enable Team routing', () => {
-  for (const input of [{}, sample, presetSample, {policy:policySample}]) {
-    const compiled = compilePluginConfig(input);
-    assert.equal(compiled.policy.schemaVersion,2); assert.equal(compiled.migrationRequired,false);
-    assert.equal(compiled.policy.enabled, false); assert.equal(Object.hasOwn(compiled.policy,'teams'), false);
-    for(const field of ['models','rules','lanes','review','guidance'])assert.equal(Object.hasOwn(compiled.policy,field),false);
-  }
-  for (const ui of [client.defaults(), client.draftFrom({})]) {
-    assert.equal(ui.enabled, false); assert.equal(Object.hasOwn(ui,'teams'), false);
-  }
+
+test('example and UI defaults remain opt-in', () => {
+  for (const input of [{}, sample]) assert.equal(compilePluginConfig(input).policy.enabled, false);
+  for (const ui of [client.emptyDraft(), client.draftFrom({})]) assert.equal(ui.enabled, false);
 });

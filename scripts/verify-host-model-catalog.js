@@ -154,7 +154,7 @@ try {
         } else {
           assert.deepEqual(normalizedModel.reasoning.efforts, model.reasoning.efforts.map(({id, name}) => ({id, name})));
           assert.equal(normalizedModel.reasoning.defaultEffort, model.reasoning.defaultEffort);
-          assert.equal(Object.hasOwn(normalizedModel.reasoning, 'levels'), false, 'not the historical levels contract');
+          assert.deepEqual(Object.keys(normalizedModel.reasoning).sort(), ['defaultEffort', 'efforts'].filter(key => normalizedModel.reasoning[key] !== undefined).sort());
         }
       }
     }
@@ -197,7 +197,7 @@ try {
     actualHostPublicMethod: 'SessionController.prototype.modelCatalog',
     actualGeneratedEndpoint: 'session/modelCatalog', actualGeneratedResultSchema: true,
     actualClientNormalizeCatalog: true, detachedLlmOnly: true, cases: observed,
-    malformedAndHistoricalSchemaRejected: true, liveCordisMount: false,
+    malformedReasoningRejected: true, liveCordisMount: false,
     liveRpcResultEnvelopeExecuted: false, profileChanged: false, filesWritten: 0,
     parentRouteChanged: false, routeAuthorizationTested: false, routingAccepted: false,
     nonReasoningCatalogMembershipDoesNotProveRoutability: true, ...counters, paidCalls: 0

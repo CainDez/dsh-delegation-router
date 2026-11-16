@@ -1,78 +1,50 @@
-# DSH Delegation Router · 0.8.2
+# DSH Delegation Router
 
-**小而可靠的委派选型插件，不是智能体调度平台。**
+主 Agent 已决定委派后，从用户维护的固定候选模型池中选择模型，通过 DSH 原生 subagent 创建文本子会话。插件不决定是否委派、不切换主模型、不编排 Agent Teams，也不增加分类模型调用或评分系统。
 
-主 Agent 已经决定委派后，按任务选择一个命名预设；插件只校验该预设的真实模型、推理档位、能力及宿主授权，再通过原生 subagent 创建子会话。不改变主模型，也不接管内置 Agent Teams。
+## 配置
 
-这是 DeepSeek Harness（DSH）的第三方独立插件，不是官方内置功能。设置使用宿主已有的模型目录与账号，不要求另填 API Key；支持 Low / High / Max 模板、逐项覆盖和 600ms 自动保存。模型调用仍可能产生所选提供方的费用。
+在插件设置中添加候选：名称、固定 provider/model、真实思考档位和一句适用说明。完整有效的修改在停止输入约 600ms 后自动保存；冲突或写入结果不确定时停止自动重试。
 
-[兼容性](<COMPATIBILITY.md>) · [安装](<INSTALLATION.md>) · [配置](<UI_CONFIGURATION.md>) · [验证范围](<VALIDATION.md>) · [安全与隐私](<SECURITY.md>) · [公开前检查](<PUBLIC_RELEASE_CHECKLIST.md>)
+配置入口只有 `ui` 和可选的绝对路径 `auditFile`。`ui.schemaVersion` 为 3，默认关闭且候选池为空。启用时必须显式指定清单内的 `defaultCandidateId`。
 
-## 只有预设清单和一个默认项
+- `candidates`：每项包含 `id / name / provider / model / effort`，可选 `description`。
+- `effort`：宿主模型目录公布的真实值；明确无可配置档位时填 `null`。目录不可用不等于没有档位。
+- `limits`：可设置 `maxPendingStarts`、`maxActivePerModel`、`maxCreationsPerParent`、`metadataTimeoutMs`。
 
-一个预设 = 名称 + 模型来源（继承主模型或指定 Provider/Model）+ 一个真实 effort + 一句适用说明。预设 ID 只读，用于工具引用。
-
-新配置内置 **Low / High / Max** 三档，默认 **High**；三档模型栏均默认“继承主模型”。创建时读取父 Agent 当前真实请求的 Provider/Model，不复制全局默认，也不继承父 effort。子会话创建后路由固定；用户可逐档改选其它已配置模型。
-
-- 三档是可编辑模板，不是六泳道或自动任务分类；一项自定义预设仍可独立使用。既有 v2 预设及默认项保留，可用“添加默认预设”补入缺少的模板。
-- 明确的用户选择优先，但仍受宿主授权限制。否则主 Agent 按任务与适用说明选择；没有明确理由时使用默认项。
-- 不增加分类模型调用，不做关键词规则、自动升级、运行中切换或失败换模型。
-- 继承提供方/模型在异步预检后及 dispatch 前重检，漂移则拒绝，不使用过期选择。
-- effort 必须来自当前真实目录。Low/High/Max 不一定被所有模型支持；不支持时明确拒绝，不偷偷降档。仅明确无可配置 effort 的模型允许 null；未知/失败不是无 effort。遇到同路由继承父 effort 的宿主边界，失败关闭而非伪造档位。
-- 默认项无效、越权、能力不足或预检失败：报错，不悄悄改用其它模型。
-- 适用说明只是选择参考，不是能力证明、权限或价格/速度承诺。
+参见默认关闭的[候选配置示例](<examples/candidates.json>)。模型目录可见不代表获得创建授权；适用说明不授予权限或证明模型能力。
 
 ## 工具
 
-| 工具 | 作用 |
+| 工具 | 职责 |
 | --- | --- |
-| delegation_routes | 无参数，只列出授权范围内的预设、默认项及配置版本；不做模型预检 |
-| routed_subagent | 指定 preset_id 或省略使用默认项，经原生 guard/审批创建全新文本子会话 |
-| router_status | 只读父作用域状态、创建回执及真实子请求证据；可读取已释放的子会话 |
-| router_reconcile | 用宿主持久证据显式结清已有 accepted 子会话；绝不重建任务 |
+| `delegation_routes` | 列出授权范围内的候选、默认项及配置代际，不进行模型预检 |
+| `routed_subagent` | 按 `candidate_id` 创建子会话；省略时使用默认项，携带 `policy_revision` 防止过期选择 |
+| `router_status` | 只读当前父作用域的配置状态、创建回执及真实请求证据 |
+| `router_reconcile` | 用宿主持久证据结清已接受的子会话，不创建或恢复 Agent |
 
-policy_revision 用于拒绝过期选择。selection_reason 已弃用，不再要求填写；暂时接受有界旧参数以兼容已有调用，不参与选型/授权、不写入审计。
+明确的用户选择优先；否则主 Agent 按任务和适用说明选择，没有明确理由时使用默认项。插件只校验被选中的候选，不自动换模型、降档或绕过宿主 guard/审批。
 
-## 0.8 收缩边界
+## 安全边界
 
-- Team 路由兼容与交互式 v1 转换已删除，原生 Team 不变。
-- delegation_routes 不再接收任务或选择参数，也不返回 selected 预览；旧清单参数会拒绝，真正创建接口仍保留。
-- 包只公开插件入口、客户端及宿主加载资源，不再导出 core / policy / config / ui-config 内部库子路径。内部实现仍保留，外部库消费者需停留旧版本或自行适配。
-- 安装包不携带开发脚本、测试或 fixture；完整回归留在源码仓库，由外部 QA 在解包代码旁执行。
+- 创建前、异步预检后和原生派发前均检查身份、授权、配置代际与取消状态；原生准备阶段不能改写选中的模型、档位或绑定的子名称。
+- 同一宿主 callId 幂等，相同 provider/model 共享并发配额；配置修改不会抹掉未结工作。
+- `unknown` 和仅有 intent 的创建不能自动重试。结清需精确父子归属及宿主终态证据；不得通过换审计路径或删除锁绕过未结状态。
+- selected 是意图，accepted 是创建回执，observed 是实际请求，settled 只是生命周期结束，不代表任务成功。
+- 审计仅记录决策身份、候选、路由、状态和结清证据，不记录任务正文、适用说明或凭据。
 
-## 配置与迁移
+## 安装与开发
 
-通过 Desktop 插件设置中的预设清单配置。编辑完整有效的配置后，停止输入约 0.6 秒自动保存，无需滚到底部手动提交；顶部吸附状态条显示保存进度与失败原因，冲突/不确定写入不会自动重试。配置 schemaVersion 为 2；核心字段是 presets / defaultPreset / enabled，安全配额放在高级区域。Team 路由兼容已退役，不提供领域替换包或 Team 创建入口；旧 teams.enabled:true 配置只读隔离并停用路由，须人工核对后移除。
-
-参见[配置说明](<UI_CONFIGURATION.md>)、[单项示例](<examples/ui-glm.json>)、[三档继承示例](<examples/presets.json>)。示例默认关闭，不会授予模型权限。
-
-旧 models/rules/lanes/review/guidance 配置只读隔离并停用路由，不执行旧规则、不自动转换。设置页只展示原文与人工处理说明，不提供迁移转换器。先备份并人工评估旧硬约束，再在原生设置中明确替换为禁用的 v2 预设配置；未解析的 default 必须重选真实档位。保留原审计路径、锁及未结事项，详见配置说明。
-
-## 可靠性边界
-
-- 创建之前、异步预检之后和原生 dispatch 前都检查身份、策略代际、授权和取消状态。
-- 同一 host callId 返回同一结果；改参重用拒绝。相同 provider/model 的多个预设共享模型并发配额。
-- 不通过选型扩大原生会话模型授权，不绕过 guard、审批或原生工具可用性。
-- 审计只记录决策身份、预设、路由、状态及结清证据，不保存任务正文、适用说明、凭据或选择解释。
-- selected = 意图；accepted = 创建回执；observed = 实际请求；settled = 激活结束，**不代表任务成功或验证通过**。
-- unknown / intent-only 永不自动重试。恢复时只接受已有 accepted + 精确父子归属 + 非驻留、以 completed turn 结束的持久会话；宿主为崩溃日志补出的 interrupted closer 不是恢复证据。
-- 配额和未知状态跨策略修改保留；审计换路径、锁冲突、损坏日志均失败关闭。
-
-## 安装与测试
-
-本版适配 DSH Desktop **0.2.2-rc.3** 的原生 kind/name 创建回执，通过父会话 subagentCatalog 与子会话 header 验证真实 childId；不把名称当作 Session ID。rc.1/rc.2 未重新做本版完整验收。详情见[兼容性说明](<COMPATIBILITY.md>)。使用同一 profile 的官方 CLI 或插件管理安装独立 0.8.2 归档，按宿主支持的方式刷新加载代际；不要求 Computer Use，不热替换正在运行的 Team。
-
-见[安装说明](<INSTALLATION.md>)和[验证记录](<VALIDATION.md>)。源码测试命令：
+运行环境：Node.js ≥22.15，DSH 0.2.2-rc.3；使用宿主已有模型目录与账号。此插件为第三方独立插件，模型调用费用由所选提供方决定。
 
 ```sh
-node --test test/*.test.js
-node scripts/check.js
+npm test
+npm run check
+npm pack --ignore-scripts
+node scripts/verify-pack.js ./dsh-delegation-router-0.9.1.tgz
+dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.9.1/dsh-delegation-router-0.9.1.tgz
 ```
 
-旧六泳道实现、规则选型器及专用测试/示例已移除；有价值的授权、目录、保存、幂等、恢复测试迁入预设契约。旧失败与未验收结果不会因公共仓库整理而改写为成功。
+安装前检查未结委派并备份配置。配置验收优先通过文件和宿主接口核对，无需 Computer Use。宿主库隔离检查可运行 `scripts/verify-host-api.js`、`scripts/verify-host-model-catalog.js`、`scripts/verify-host-lifecycle.js`，参数为对应宿主的 package.json 路径；它们不连接运行 Profile、不创建 Agent、不发起推理。
 
-## 开源与分发
-
-采用 [MIT 许可证](<LICENSE>)。GitHub 仓库公开与 npm 发布是两件事：[包清单](<package.json>)保留 private:true，防止误发 npm，不影响公开源码或通过归档安装。生产包只携带运行文件和用户说明，完整测试位于源码仓库。
-
-公共仓库从清理后的当前源码建立新基线，不分发旧提交历史、本机验收日志、安装收据、内部计划或私有备份；必要版权归属不变。当前版本为 0.8.2，修复新版宿主创建回执兼容性。正式发行需独立版本、重新打包、解包验证并生成新校验值，不复用旧产物收据，不把离线检查记为在线验收。
+采用 [MIT 许可证](<LICENSE>)。[包清单](<package.json>)的 `private: true` 防止误发 npm，不影响归档安装。

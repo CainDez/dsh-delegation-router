@@ -1,12 +1,23 @@
 {
   "name": "dsh-delegation-router",
-  "version": "0.8.2",
+  "version": "0.9.1",
   "private": true,
-  "repository": { "type": "git", "url": "git+https://github.com/CainDez/dsh-delegation-router.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CainDez/dsh-delegation-router.git"
+  },
   "homepage": "https://github.com/CainDez/dsh-delegation-router#readme",
-  "bugs": { "url": "https://github.com/CainDez/dsh-delegation-router/issues" },
-  "keywords": ["deepseek-harness", "dsh-plugin", "subagent", "delegation", "model-routing"],
-  "description": "DSH delegation presets with parent-model inheritance, exact reasoning-effort validation and autosaved settings; preserves host authorization and the parent model.",
+  "bugs": {
+    "url": "https://github.com/CainDez/dsh-delegation-router/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "subagent",
+    "delegation",
+    "model-routing"
+  ],
+  "description": "DSH delegation candidates with exact provider/model/effort validation and autosaved settings; preserves host authorization and the parent model.",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -21,19 +32,12 @@
   },
   "files": [
     "src/*.js",
-    "examples/presets.json",
-    "examples/ui-glm.json",
+    "examples/candidates.json",
     "locale",
     "assets",
     "cordis.patch.yml",
     "client.js",
     "README.md",
-    "VALIDATION.md",
-    "INSTALLATION.md",
-    "UI_CONFIGURATION.md",
-    "COMPATIBILITY.md",
-    "SECURITY.md",
-    "PUBLIC_RELEASE_CHECKLIST.md",
     "LICENSE"
   ],
   "scripts": {
@@ -50,7 +54,9 @@
     "zod": "4.6.6"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/cosmokit": { "optional": true },
+    "@deepseek-ai/cosmokit": {
+      "optional": true
+    },
     "@deepseek-ai/cordis": {
       "optional": true
     },
@@ -71,7 +77,12 @@
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": ["@deepseek-ai/dsh-api-remotes", "@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-client-ui-slots", "@deepseek-ai/dsh-client-locale"]
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-locale"
+      ]
     },
     "bundle": {
       "patch": "./cordis.patch.yml"

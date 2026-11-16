@@ -15,7 +15,7 @@ export class LiveRouter {
   status(){
     try {
       const {config,key,revision}=this.snapshot();
-      return {enabled:config.policy.enabled,migrationRequired:config.migrationRequired===true,...(config.configurationIssue?{configurationIssue:{code:config.configurationIssue.code,message:config.configurationIssue.message}}:{}),configuredRevision:revision,activeRevision:this.runtime?.revision??null,configurationPending:!!this.runtime&&this.key!==key,switchingBlocked:this.inFlight>0||this.pending(),inFlight:this.inFlight};
+      return {enabled:config.policy.enabled,configuredRevision:revision,activeRevision:this.runtime?.revision??null,configurationPending:!!this.runtime&&this.key!==key,switchingBlocked:this.inFlight>0||this.pending(),inFlight:this.inFlight};
     }catch(error){return {enabled:false,configurationError:{code:error.code??'INVALID_CONFIG',message:error.message},activeRevision:this.runtime?.revision??null,inFlight:this.inFlight};}
   }
   decisions(parent,options={}){

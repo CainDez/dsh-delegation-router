@@ -1,0 +1,25 @@
+{
+  "ui": {
+    "schemaVersion": 3,
+    "enabled": false,
+    "candidates": [
+      {
+        "id": "quick",
+        "name": "快速",
+        "provider": "zai-coding-cn",
+        "model": "glm-5.3-flash",
+        "effort": "low",
+        "description": "简单、独立、边界明确的任务"
+      },
+      {
+        "id": "deep",
+        "name": "深入分析",
+        "provider": "zai-coding-cn",
+        "model": "glm-5.3",
+        "effort": "high",
+        "description": "日常编码、分析与测试；默认候选"
+      }
+    ],
+    "defaultCandidateId": "deep"
+  }
+}

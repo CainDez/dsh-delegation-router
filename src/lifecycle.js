@@ -11,7 +11,7 @@ const own = (value,key) => {
   return descriptor && 'value' in descriptor ? descriptor.value : undefined;
 };
 const identity = value => typeof value === 'string' && value.length > 0 && value.length <= 500;
-/** Whitelist actual request identity; never fall back to Agent options or selected presets. */
+/** Whitelist actual request identity; never fall back to Agent options or selected candidates. */
 export function routeEvidence(value) {
   const provider=own(value,'provider'), model=own(value,'model');
   if (typeof provider !== 'string' || !provider || provider.length>200 || typeof model !== 'string' || !model || model.length>200) return null;
@@ -109,7 +109,7 @@ export async function decisionSnapshot(parent,records,{limit=20,readChildRoute,r
     result.push(Object.freeze({decisionId:record.decisionId,policyRevision:record.policyRevision,kind:record.kind,
       status,selected:routeEvidence(record),accepted:accepted.has(record.decisionId),observed,
       settled:!unknown && record.status==='settled',unknown,
-      ...(typeof record.presetId==='string'?{presetId:record.presetId}:{}),
+      ...(typeof record.candidateId==='string'?{candidateId:record.candidateId}:{}),
       ...(typeof record.childId==='string'?{childId:record.childId}:{}),
       ...(typeof record.time==='number' && Number.isFinite(record.time)?{time:record.time}:{})}));
   }

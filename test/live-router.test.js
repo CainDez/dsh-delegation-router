@@ -6,8 +6,8 @@ import { MemoryJournal } from '../src/journal.js';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 class CountingJournal extends MemoryJournal { closes = 0; close() { this.closes++; } }
-const preset = id => ({ id, name:'Preset '+id, provider: 'provider-' + id, model: 'model-' + id, effort:'low' });
-const policy = extra => normalizeConfig({ schemaVersion:2, enabled: true, presets: [preset('a'), preset('b')], defaultPreset:'a', ...extra });
+const candidate = id => ({ id, name:'Candidate '+id, provider: 'provider-' + id, model: 'model-' + id, effort:'low' });
+const policy = extra => normalizeConfig({ schemaVersion:3, enabled: true, candidates: [candidate('a'), candidate('b')], defaultCandidateId:'a', ...extra });
 const request = extra => ({ prompt: 'Bounded child work', description: 'child work', ...extra });
 const execution = (callId, signal) => ({ callId, signal });
 const metadata = { inputModalities: ['text'], context: { contextWindow: 100000 }, reasoning: { efforts: ['low', 'high'], defaultEffort: 'low' } };
@@ -48,10 +48,10 @@ test('disabled status and disabled admissions do not acquire an audit owner', as
 
 test('first enable lazily creates one owner and preserves parent Agent options', async () => {
   const f = fixture({ policy: { enabled: false } }), before = structuredClone(f.parent);
-  const enabled = f.candidate({ defaultPreset: 'b' });
+  const enabled = f.candidate({ defaultCandidateId: 'b' });
   assert.doesNotThrow(() => f.router.validateUpdate(enabled));
   assert.equal(f.owners.length, 0);
-  f.replace({ defaultPreset: 'b' });
+  f.replace({ defaultCandidateId: 'b' });
   const result = await f.router.run(f.parent, request(), execution('first'));
   assert.equal(result.selected.model, 'model-b');
   assert.equal(f.owners.length, 1); assert.deepEqual(f.paths, ['C:/audit/router.jsonl']);
@@ -65,8 +65,8 @@ test('revision switch uses the new route while old call identity returns the exa
   const f = fixture(), one = f.router.run(f.parent, request(), execution('one'));
   const result = await one; f.router.settle(f.parent.id, result.childId);
   const oldRuntime = f.router.runtime;
-  f.router.validateUpdate(f.candidate({ defaultPreset: 'b' }));
-  f.replace({ defaultPreset: 'b' });
+  f.router.validateUpdate(f.candidate({ defaultCandidateId: 'b' }));
+  f.replace({ defaultCandidateId: 'b' });
   const second = await f.router.run(f.parent, request(), execution('two'));
   assert.equal(second.selected.model, 'model-b');
   assert.notEqual(f.router.runtime, oldRuntime);
@@ -96,11 +96,11 @@ test('prepare inFlight guard rejects policy updates before any intent or native 
   assert.equal(f.router.status().inFlight, 1);
   assert.equal(f.router.status().switchingBlocked, true);
   assert.deepEqual(f.owners[0].load(), []);
-  assert.throws(() => f.router.validateUpdate(f.candidate({ defaultPreset: 'b' })), { code: 'CONFIG_BUSY' });
+  assert.throws(() => f.router.validateUpdate(f.candidate({ defaultCandidateId: 'b' })), { code: 'CONFIG_BUSY' });
   assert.doesNotThrow(() => f.router.validateUpdate(f.current));
   release.resolve(); const result = await running;
   f.router.settle(f.parent.id, result.childId);
-  assert.doesNotThrow(() => f.router.validateUpdate(f.candidate({ defaultPreset: 'b' })));
+  assert.doesNotThrow(() => f.router.validateUpdate(f.candidate({ defaultCandidateId: 'b' })));
   f.router.close();
 });
 
@@ -109,29 +109,29 @@ test('creation preflight participates in the update guard and rejection releases
   const f = fixture({ preflight: async () => { entered.resolve(); await release.promise; throw Object.assign(Error('preflight refused'),{code:'PREFLIGHT'}); } });
   const running = f.router.run(f.parent, request(), execution('preflight')); await entered.promise;
   assert.equal(f.router.inFlight, 1);
-  assert.throws(() => f.router.validateUpdate(f.candidate({ defaultPreset: 'b' })), { code: 'CONFIG_BUSY' });
+  assert.throws(() => f.router.validateUpdate(f.candidate({ defaultCandidateId: 'b' })), { code: 'CONFIG_BUSY' });
   release.resolve(); await assert.rejects(running,{code:'PREFLIGHT'});
   assert.equal(f.router.inFlight, 0); assert.deepEqual(f.owners[0].load(), []);
   assert.equal(f.starts.length, 0);
-  assert.doesNotThrow(() => f.router.validateUpdate(f.candidate({ defaultPreset: 'b' })));
+  assert.doesNotThrow(() => f.router.validateUpdate(f.candidate({ defaultCandidateId: 'b' })));
   f.router.close();
 });
 
 test('accepted live children block revisions until their lifecycle settlement, not merely until run resolves', async () => {
   const f = fixture(); const child = await f.router.run(f.parent, request(), execution('one'));
   assert.equal(f.router.inFlight, 0); assert.equal(f.router.pending(), true);
-  assert.throws(() => f.router.validateUpdate(f.candidate({ defaultPreset: 'b' })), { code: 'CONFIG_BUSY' });
+  assert.throws(() => f.router.validateUpdate(f.candidate({ defaultCandidateId: 'b' })), { code: 'CONFIG_BUSY' });
   f.router.settle(f.parent.id, child.childId);
   assert.equal(f.router.pending(), false);
-  assert.doesNotThrow(() => f.router.validateUpdate(f.candidate({ defaultPreset: 'b' })));
-  f.replace({ defaultPreset: 'b' }); await f.router.run(f.parent, request(), execution('later'));
+  assert.doesNotThrow(() => f.router.validateUpdate(f.candidate({ defaultCandidateId: 'b' })));
+  f.replace({ defaultCandidateId: 'b' }); await f.router.run(f.parent, request(), execution('later'));
   assert.equal(f.owners.length, 1);
   f.router.close();
 });
 
 test('bypassing the pre-save guard still cannot switch routes while children are active', async () => {
   const f = fixture(); const child = await f.router.run(f.parent, request(), execution('one'));
-  f.replace({ defaultPreset: 'b' });
+  f.replace({ defaultCandidateId: 'b' });
   assert.equal(f.router.status().configurationPending, true);
   await fails(() => f.router.run(f.parent, request(), execution('two')), 'CONFIG_BUSY');
   assert.equal(f.starts.length, 1);
@@ -145,14 +145,14 @@ test('bypassing the pre-save guard still cannot switch routes while children are
 test('disable blocks new work immediately without disposing the runtime needed for settle', async () => {
   const f = fixture(); const first = await f.router.run(f.parent, request(), execution('one'));
   const runtime = f.router.runtime;
-  assert.doesNotThrow(() => f.router.validateUpdate(f.candidate({ enabled: false, defaultPreset: 'b' })));
-  f.replace({ enabled: false, defaultPreset: 'b' });
+  assert.doesNotThrow(() => f.router.validateUpdate(f.candidate({ enabled: false, defaultCandidateId: 'b' })));
+  f.replace({ enabled: false, defaultCandidateId: 'b' });
   await fails(() => f.router.run(f.parent, request(), execution('disabled')), 'ROUTER_DISABLED');
   assert.equal(f.router.runtime, runtime); assert.equal(f.owners[0].closes, 0);
   f.router.settle(f.parent.id, first.childId);
   assert.deepEqual(f.owners[0].load().map(r => r.status), ['intent', 'accepted', 'settled']);
-  f.router.validateUpdate(f.candidate({ defaultPreset: 'b' }));
-  f.replace({ defaultPreset: 'b' });
+  f.router.validateUpdate(f.candidate({ defaultCandidateId: 'b' }));
+  f.replace({ defaultCandidateId: 'b' });
   const next = await f.router.run(f.parent, request(), execution('after-enable'));
   assert.equal(next.selected.model, 'model-b');
   assert.equal(f.owners.length, 1);
@@ -163,7 +163,7 @@ test('configuration changing during metadata await rejects the old plan before n
   const entered = deferred(), release = deferred();
   const f = fixture({ resolveModel: async () => { entered.resolve(); await release.promise; return metadata; } });
   const running = f.router.run(f.parent, request(), execution('one')); await entered.promise;
-  f.replace({ defaultPreset: 'b' }); release.resolve();
+  f.replace({ defaultCandidateId: 'b' }); release.resolve();
   await assert.rejects(running, { code: 'STALE_CONFIG' });
   assert.equal(f.starts.length, 0); assert.equal(f.router.inFlight, 0);
   assert.deepEqual(f.owners[0].load(), []);
@@ -185,7 +185,7 @@ test('configuration disabling during preflight rejects old options rather than p
 
 test('last synchronous revision check rejects configuration changed by intent publication before native dispatch', async () => {
   let f, changed = false;
-  class UpdatingJournal extends CountingJournal { append(record) { super.append(record); if (record.status === 'intent' && !changed) { changed = true; f.replace({ defaultPreset: 'b' }); } } }
+  class UpdatingJournal extends CountingJournal { append(record) { super.append(record); if (record.status === 'intent' && !changed) { changed = true; f.replace({ defaultCandidateId: 'b' }); } } }
   f = fixture({ createJournal: () => new UpdatingJournal() });
   await fails(() => f.router.run(f.parent, request(), execution('one')), 'STALE_CONFIG');
   assert.equal(f.starts.length, 0);
@@ -202,10 +202,10 @@ test('coordinator routes an end-before-receipt event to the original runtime and
   await f.router.run(f.parent, request(), execution('one'));
   assert.deepEqual(f.owners[0].load().map(record => record.status), ['intent', 'accepted', 'settled']);
   assert.equal(f.router.pending(), false);
-  assert.doesNotThrow(() => f.router.validateUpdate(f.candidate({ defaultPreset: 'b' })));
-  f.replace({ defaultPreset: 'b' });
+  assert.doesNotThrow(() => f.router.validateUpdate(f.candidate({ defaultCandidateId: 'b' })));
+  f.replace({ defaultCandidateId: 'b' });
   const next = await f.router.run(f.parent, request(), execution('later'));
-  assert.equal(next.presetId, 'b');
+  assert.equal(next.candidateId, 'b');
   assert.equal(f.owners.length, 1);
   f.router.close();
 });
@@ -217,9 +217,9 @@ test('unknown outcomes retain parent pause across revisions and preserve failed 
   await assert.rejects(first, { code: 'TRANSPORT' });
   assert.deepEqual(f.owners[0].load().map(r => r.status), ['intent', 'unknown']);
   assert.equal(f.router.pending(), true);
-  assert.throws(()=>f.router.validateUpdate(f.candidate({ defaultPreset: 'b' })),{code:'CONFIG_BUSY'});
+  assert.throws(()=>f.router.validateUpdate(f.candidate({ defaultCandidateId: 'b' })),{code:'CONFIG_BUSY'});
   await fails(() => f.router.run(f.parent, request(), execution('two')), 'RECOVERY_REQUIRED');
-  f.replace({defaultPreset:'b'});
+  f.replace({defaultCandidateId:'b'});
   await fails(() => f.router.run(f.parent,request(),execution('changed')), 'CONFIG_BUSY');
   f.router.settle(f.parent.id, 'late-child');
   assert.deepEqual(f.owners[0].load().map(r => r.status), ['intent', 'unknown']);
@@ -232,7 +232,7 @@ test('cumulative parent creation quotas survive fresh runtime reconstruction aft
   const f = fixture({ policy: { limits: { maxCreationsPerParent: 1 } } });
   const first = await f.router.run(f.parent, request(), execution('one'));
   f.router.settle(f.parent.id, first.childId);
-  const next = { defaultPreset: 'b', limits: { maxCreationsPerParent: 1 } };
+  const next = { defaultCandidateId: 'b', limits: { maxCreationsPerParent: 1 } };
   f.router.validateUpdate(f.candidate(next)); f.replace(next);
   await fails(() => f.router.run(f.parent, request(), execution('two')), 'CREATION_LIMIT');
   assert.equal(f.starts.length, 1); assert.equal(f.router.runtime.ledger.state(f.parent.id).created, 1);
@@ -272,7 +272,7 @@ test('closing after multiple successful revisions releases the real owner exactl
   const f = fixture();
   const first=await f.router.run(f.parent, request(), execution('initial'));f.router.settle(f.parent.id,first.childId);
   let call=0;
-  for (const defaultPreset of ['b', 'a', 'b']) { f.replace({ defaultPreset }); const child=await f.router.run(f.parent, request(), execution('revision-'+call++));f.router.settle(f.parent.id,child.childId); }
+  for (const defaultCandidateId of ['b', 'a', 'b']) { f.replace({ defaultCandidateId }); const child=await f.router.run(f.parent, request(), execution('revision-'+call++));f.router.settle(f.parent.id,child.childId); }
   assert.equal(f.owners.length, 1); assert.equal(f.owners[0].closes, 0);
   f.router.close(); f.router.close();
   assert.equal(f.owners[0].closes, 1);
@@ -301,8 +301,8 @@ test('decision read is lazy even when enabled and never opens a journal or runti
 test('decision snapshots isolate parents, distinguish acceptance from actual request, and survive disable settlement',async()=>{
   let observed=null;
   const f=fixture({readChildRoute:async()=>observed});
-  const result=await f.router.run(f.parent,request({preset_id:'a'}),execution('first'));
-  const [accepted]=await f.router.decisions(f.parent);assert.equal(accepted.status,'accepted');assert.equal(accepted.observed,null);assert.equal(accepted.presetId,'a');
+  const result=await f.router.run(f.parent,request({candidate_id:'a'}),execution('first'));
+  const [accepted]=await f.router.decisions(f.parent);assert.equal(accepted.status,'accepted');assert.equal(accepted.observed,null);assert.equal(accepted.candidateId,'a');
   assert.deepEqual(await f.router.decisions({id:'foreign',session:{header:{origin:'root'}}}),[]);
   observed={provider:'actual',model:'request',effort:'high',secret:'credential'};
   assert.equal((await f.router.decisions(f.parent))[0].status,'observed');
@@ -323,17 +323,17 @@ test('recovered accepted records are unknown snapshots and a late end cannot aut
 });
 
 const terminalEvidence=(parentId='parent',childId='old-child')=>({source:'persisted-turn-end',parentId,childId,startSeq:4,endSeq:9,reason:'completed'});
-function legacyAcceptedJournal(status='accepted'){
-  const journal=new CountingJournal();const base={decisionId:'old-decision',parentId:'parent',policyRevision:'original-revision',modelId:'old-model-alias',provider:'old-provider',model:'old-model',effort:'high',kind:'subagent'};
+function recordedAcceptedJournal(status='accepted'){
+  const journal=new CountingJournal();const base={decisionId:'old-decision',candidateId:'recorded-candidate',parentId:'parent',policyRevision:'original-revision',modelId:'old-model-alias',provider:'old-provider',model:'old-model',effort:'high',kind:'subagent'};
   journal.append({...base,status:'intent',time:1});journal.append({...base,status,childId:'old-child',time:2});return journal;
 }
-test('explicit recovery works while disabled, preserves legacy identity and never creates an Agent',async()=>{
-  const journal=legacyAcceptedJournal(),original=structuredClone(journal.load());const f=fixture({policy:{enabled:false},createJournal:()=>journal});
+test('explicit recovery works while disabled, preserves recorded candidate identity and never creates an Agent',async()=>{
+  const journal=recordedAcceptedJournal(),original=structuredClone(journal.load());const f=fixture({policy:{enabled:false},createJournal:()=>journal});
   assert.equal(f.router.status().enabled,false);assert.deepEqual(await f.router.decisions(f.parent),[]);assert.equal(f.owners.length,0);
   const result=f.router.reconcile('parent','old-child',terminalEvidence());assert.equal(result.reconciled,true);
   assert.equal(f.owners.length,1);assert.equal(f.owners[0].closes,0);assert.equal(f.starts.length,0);assert.equal(f.router.calls.size,0);
   assert.deepEqual(journal.load().slice(0,2),original);const settled=journal.load()[2];
-  for(const field of ['decisionId','parentId','policyRevision','modelId','provider','model','effort','kind','childId'])assert.equal(settled[field],original[1][field]);
+  for(const field of ['decisionId','candidateId','parentId','policyRevision','modelId','provider','model','effort','kind','childId'])assert.equal(settled[field],original[1][field]);
   assert.equal(settled.status,'settled');assert.equal(f.router.pending(),false);assert.equal(f.router.runtime.ledger.state('parent').created,1);
   assert.equal(f.router.runtime.ledger.state('parent').paused,false);
   const [card]=await f.router.decisions(f.parent);assert.equal(card.settled,true);assert.equal(card.unknown,false);
@@ -341,7 +341,7 @@ test('explicit recovery works while disabled, preserves legacy identity and neve
   await fails(()=>f.router.run(f.parent,request(),execution('still-off')),'ROUTER_DISABLED');f.router.close();assert.equal(journal.closes,1);
 });
 test('unknown recovery cannot clear history, parent pause or journal ownership even while disabled',async()=>{
-  const journal=legacyAcceptedJournal('unknown'),before=structuredClone(journal.load());const f=fixture({policy:{enabled:false},createJournal:()=>journal});
+  const journal=recordedAcceptedJournal('unknown'),before=structuredClone(journal.load());const f=fixture({policy:{enabled:false},createJournal:()=>journal});
   assert.throws(()=>f.router.reconcile('parent','old-child',terminalEvidence()),{code:'RECOVERY_REQUIRED'});
   assert.deepEqual(journal.load(),before);assert.equal(f.router.pending(),true);assert.equal(f.router.runtime.ledger.state('parent').paused,true);assert.equal(journal.closes,0);
   assert.throws(()=>f.router.validateUpdate(f.candidate({enabled:true})),{code:'CONFIG_BUSY'});
@@ -349,15 +349,15 @@ test('unknown recovery cannot clear history, parent pause or journal ownership e
 });
 test('reconciliation evidence and cross-parent failures never append or release the audit owner',()=>{
   for(const evidence of [undefined,terminalEvidence('foreign'),{...terminalEvidence(),source:'inactive'}, {...terminalEvidence(),startSeq:9,endSeq:4}]){
-    const journal=legacyAcceptedJournal(),before=structuredClone(journal.load());const f=fixture({policy:{enabled:false},createJournal:()=>journal});
+    const journal=recordedAcceptedJournal(),before=structuredClone(journal.load());const f=fixture({policy:{enabled:false},createJournal:()=>journal});
     assert.throws(()=>f.router.reconcile('parent','old-child',evidence),{code:'RECONCILIATION_EVIDENCE'});
     assert.deepEqual(journal.load(),before);assert.equal(journal.closes,0);assert.equal(f.router.runtime.ledger.state('parent').paused,true);assert.equal(f.starts.length,0);f.router.close();
   }
-  const journal=legacyAcceptedJournal(),f=fixture({policy:{enabled:false},createJournal:()=>journal});
+  const journal=recordedAcceptedJournal(),f=fixture({policy:{enabled:false},createJournal:()=>journal});
   assert.throws(()=>f.router.reconcile('foreign','old-child',terminalEvidence('foreign')),{code:'RECONCILIATION_SCOPE'});assert.equal(journal.closes,0);assert.equal(journal.load().length,2);f.router.close();
 });
 test('ambiguous recovery writes keep ownership and pause without repeating mutation',()=>{
-  const journal=legacyAcceptedJournal();const append=journal.append.bind(journal);let attempted=0;
+  const journal=recordedAcceptedJournal();const append=journal.append.bind(journal);let attempted=0;
   journal.append=record=>{if(record.status==='settled'){attempted++;throw Object.assign(Error('fsync failure'),{code:'AUDIT_IO'});}append(record);};
   const f=fixture({policy:{enabled:false},createJournal:()=>journal});
   assert.throws(()=>f.router.reconcile('parent','old-child',terminalEvidence()),{code:'AUDIT_IO'});

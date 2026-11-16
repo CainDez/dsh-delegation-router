@@ -13,7 +13,7 @@ window.__ModuleLoader__.load({
   "readOnly": "当前配置为只读。",
   "autosave": "停止输入约 0.6 秒后自动保存，无需手动提交。",
   "autosavePending": "更改待自动保存…",
-  "autosaveIncomplete": "更改尚未保存，请补全必填项、有效默认预设及范围内的整数配额。",
+  "autosaveIncomplete": "更改尚未保存，请补全必填项、有效默认候选及范围内的整数配额。",
   "autosaveFailed": "自动保存未完成，更改已保留。",
   "retry": "重试自动保存",
   "saving": "正在保存…",
@@ -44,39 +44,29 @@ window.__ModuleLoader__.load({
   "maxActivePerModel": "每模型最大活动数",
   "maxCreationsPerParent": "父会话累计创建上限",
   "metadataTimeoutMs": "元数据与预检超时（毫秒）",
-  "teamRemoved": "Team 路由已移除，原配置只读保留，路由已停用。请先备份原文，再在原生设置中明确移除 teams 后重新配置路由。",
-  "legacyConfiguration": "旧配置只读保留，路由已停用。请先备份原文，再在原生设置中手动替换为 v2 预设；不会自动转换规则或硬约束。",
-  "configurationOriginal": "配置原文（只读保留）",
-  "executionEvidence": "保存或列出预设不会执行委派，也不能证明子 Agent 的实际路由；实际父作用域证据请通过 router_status 查询。",
-  "title": "委派预设",
-  "summary": "新配置提供 Low / High / Max，初始默认 High；模型可继承主 Agent 或逐档固定，不切换主 Agent。",
-  "presets": "预设清单",
-  "addPreset": "添加预设",
-  "addDefaults": "添加默认预设",
-  "defaultsHelp": "仅补入缺少的 Low / High / Max ID，不覆盖同 ID 的自定义预设或当前默认选择。",
-  "inheritModel": "继承主模型",
-  "inheritHelp": "创建时解析主 Agent 模型并校验档位；此页不猜测当前主模型。",
-  "templateEffort": "模板档位（创建时校验）",
-  "inheritEffortHelp": "Low / High / Max 是模板值，尚未通过当前主模型的目录验证；不支持时拒绝创建，不回退档位。",
-  "retainedEffort": "已保存的精确值（保留，创建时校验）",
-  "name": "预设名称",
+  "executionEvidence": "保存或列出候选不会执行委派，也不能证明子 Agent 的实际路由；实际父作用域证据请通过 router_status 查询。",
+  "title": "委派候选模型",
+  "summary": "由用户维护候选模型：精确 provider / model / 思考档位，外加一个默认项；主 Agent 创建子 Agent 时直接选择其一，不新增选型调用，也不切换主 Agent。",
+  "candidates": "候选清单",
+  "addCandidate": "添加候选",
+  "name": "候选名称",
   "description": "适用说明（一句话）",
   "effort": "思考档位",
-  "defaultPreset": "默认预设",
-  "chooseDefault": "未指定默认预设（仅关闭时允许）",
-  "noPresets": "尚无预设。可添加继承主模型的预设，或补入默认三档。",
-  "catalogHelp": "固定模型从 DSH 原生目录选择，真实档位单选；明确无可选档位时保存 null，不补造 default。继承模式在创建时校验，目录可见不代表授权或通过后端预检。",
-  "noReasoning": "目录确认此模型没有可选思考档位；本预设使用 null，不发送思考档位。",
+  "defaultCandidate": "默认候选",
+  "chooseDefault": "未指定默认候选（仅关闭时允许）",
+  "noCandidates": "尚无候选。添加一个候选，并从目录选择精确 provider / model / 思考档位。",
+  "catalogHelp": "候选模型从 DSH 原生目录选择，档位为目录公示的真实值单选；明确无可选档位时保存 null，不补造 default。目录可见不代表授权或通过后端预检。",
+  "noReasoning": "目录确认此模型没有可选思考档位；本候选使用 null，不发送思考档位。",
   "noEffort": "无可选档位（null）",
   "effortRequired": "请选择一个真实档位；default 哨兵不会自动迁移。",
-  "invalidDraft": "请补全每个预设的名称、唯一 ID、模型和单个档位；启用前必须明确选择有效默认预设。",
-  "authority": "预设说明仅为选型资料，不授予能力、权限或安排任务。非法提案将被拒绝，不自动换模型。当前创建仅传文本，不转发图片。",
+  "invalidDraft": "请补全每个候选的名称、唯一 ID、模型和单个档位；启用前必须明确选择有效默认候选。",
+  "authority": "候选说明仅为选型资料，不授予能力、权限或安排任务。非法提案将被拒绝，不自动换模型。当前创建仅传文本，不转发图片。",
   "advanced": "高级与安全设置",
   "auditFile": "审计路径（由原生设置管理）",
   "auditHelp": "此表单保留既有 auditFile，不清除日志或锁。需要修改时请使用原生设置。",
-  "policySource": "从已弃用的 policy 读取兼容别名载入 v2 预设，并非高级模式；保存将原子移除 policy 并写入规范入口 ui，其他设置保留。",
-  "sourceConflict": "同时存在 ui 和 policy；不能合并或覆盖，请先在原生设置明确保留一个来源。",
-  "invalidSource": "配置结构无效，已阻止此表单覆盖原文；请在原生设置核对修复。"
+  "invalidSource": "配置结构无效（需要 v3 候选配置），已阻止此表单覆盖原文；请在原生设置核对修复。",
+  "invalidSourceTitle": "无效配置",
+  "originalConfiguration": "原始配置（只读）"
 };
     const en = {
   "loading": "Reading profile configuration…",
@@ -84,7 +74,7 @@ window.__ModuleLoader__.load({
   "readOnly": "This configuration is read-only.",
   "autosave": "Changes save automatically after 0.6 seconds of inactivity; no manual submission needed.",
   "autosavePending": "Changes pending automatic save…",
-  "autosaveIncomplete": "Not saved yet. Complete required fields, choose a valid default preset and use integer quotas within range.",
+  "autosaveIncomplete": "Not saved yet. Complete required fields, choose a valid default candidate and use integer quotas within range.",
   "autosaveFailed": "Automatic save did not finish. Your changes were retained.",
   "retry": "Retry automatic save",
   "saving": "Saving…",
@@ -115,109 +105,99 @@ window.__ModuleLoader__.load({
   "maxActivePerModel": "Maximum active children per model",
   "maxCreationsPerParent": "Cumulative creation limit per parent",
   "metadataTimeoutMs": "Metadata and preflight timeout (milliseconds)",
-  "teamRemoved": "Team routing has been removed. The original configuration is preserved read-only and routing is disabled. Back up the original, then explicitly remove teams in native settings before reconfiguring routing.",
-  "legacyConfiguration": "Legacy configuration is preserved read-only and routing is disabled. Back up the original, then manually replace it with v2 presets in native settings. No rules or constraints are automatically converted.",
-  "configurationOriginal": "Original configuration (preserved read-only)",
-  "executionEvidence": "Saving or listing presets does not execute delegation or prove actual child routing; query actual parent-scoped evidence with router_status.",
-  "title": "Delegation presets",
-  "summary": "Low / High / Max presets, with High as the initial default. Inherit the main Agent model or fix a model per preset; never switches the main Agent.",
-  "presets": "Preset list",
-  "addPreset": "Add preset",
-  "addDefaults": "Add default presets",
-  "defaultsHelp": "Add only missing Low / High / Max IDs; never replace custom presets with those IDs or change the current default selection.",
-  "inheritModel": "Inherit main model",
-  "inheritHelp": "Resolve the main Agent model and validate the effort at creation; this page does not guess the current main model.",
-  "templateEffort": "Template effort (validated at creation)",
-  "inheritEffortHelp": "Low / High / Max are template values, not catalog-validated for the current main model. Unsupported efforts reject creation without fallback.",
-  "retainedEffort": "Saved exact value (retained; validated at creation)",
-  "name": "Preset name",
+  "executionEvidence": "Saving or listing candidates does not execute delegation or prove actual child routing; query actual parent-scoped evidence with router_status.",
+  "title": "Delegation candidates",
+  "summary": "Candidates are maintained by the user: exact provider / model / reasoning effort plus one default. The main Agent picks one directly at child creation; no extra selection calls and never switches the main Agent.",
+  "candidates": "Candidate list",
+  "addCandidate": "Add candidate",
+  "name": "Candidate name",
   "description": "Usage description (one sentence)",
   "effort": "Reasoning effort",
-  "defaultPreset": "Default preset",
-  "chooseDefault": "No default preset (disabled routing only)",
-  "noPresets": "No presets yet. Add a preset inheriting the main model, or add the three default templates.",
-  "catalogHelp": "Fixed models use the native DSH catalog and one real effort. Confirmed effort-less entries use null, never an invented default. Inherited routes are validated at creation; catalog visibility is not authorization or backend preflight approval.",
-  "noReasoning": "The catalog confirms no selectable reasoning efforts for this model. This preset uses null and sends no reasoning effort.",
+  "defaultCandidate": "Default candidate",
+  "chooseDefault": "No default candidate (disabled routing only)",
+  "noCandidates": "No candidates yet. Add one and choose an exact provider / model / effort from the catalog.",
+  "catalogHelp": "Candidate models use the native DSH catalog and one real advertised effort. Confirmed effort-less entries use null, never an invented default. Catalog visibility is not authorization or backend preflight approval.",
+  "noReasoning": "The catalog confirms no selectable reasoning efforts for this model. This candidate uses null and sends no reasoning effort.",
   "noEffort": "No selectable effort (null)",
   "effortRequired": "Choose a real effort. The default sentinel is never migrated automatically.",
-  "invalidDraft": "Complete each preset name, unique ID, model and single effort; explicitly choose a valid default preset before enabling.",
-  "authority": "Preset descriptions are selection data, not capability, authorization or task assignments. Invalid proposals are rejected without switching models. Creation is text-only and does not forward images.",
+  "invalidDraft": "Complete each candidate name, unique ID, model and single effort; explicitly choose a valid default candidate before enabling.",
+  "authority": "Candidate descriptions are selection data, not capability, authorization or task assignments. Invalid proposals are rejected without switching models. Creation is text-only and does not forward images.",
   "advanced": "Advanced and safety settings",
   "auditFile": "Audit path (managed in native settings)",
   "auditHelp": "This form preserves auditFile and never clears journals or locks. Change the path through native settings.",
-  "policySource": "Loaded v2 presets from the deprecated policy read alias, not an advanced mode. Saving atomically removes policy and writes canonical ui, preserving other settings.",
-  "sourceConflict": "Both ui and policy are present. They cannot be merged or overwritten; explicitly retain one source in native settings first.",
-  "invalidSource": "Invalid configuration structure. This form cannot overwrite the original; review and repair it in native settings."
+  "invalidSource": "Invalid configuration structure (v3 candidates required). This form cannot overwrite the original; review and repair it in native settings.",
+  "invalidSourceTitle": "Invalid configuration",
+  "originalConfiguration": "Original configuration (read-only)"
 };
-    // Native loader script has no ESM imports. Keep this browser mirror in parity
-    // with src/default-presets.js; the client regression compares every field.
-    const DEFAULT_PRESET_ID = 'default-high', PARENT_MODEL_KEY = 'parent';
-    const createDefaultPresets = () => [
-      { id: 'default-low', name: 'Low', modelSource: 'parent', effort: 'low', description: '轻量、范围明确的任务。' },
-      { id: 'default-high', name: 'High', modelSource: 'parent', effort: 'high', description: '需要较充分推理的常规任务。' },
-      { id: 'default-max', name: 'Max', modelSource: 'parent', effort: 'max', description: '需要深入推理的复杂任务。' }
-    ];
-    const emptyDraft = () => ({ schemaVersion: 2, enabled: false, presets: [], limits: { maxPendingStarts: 32, maxActivePerModel: 8, maxCreationsPerParent: 64, metadataTimeoutMs: 5000 } });
-    const defaults = () => ({ ...emptyDraft(), presets: createDefaultPresets(), defaultPreset: DEFAULT_PRESET_ID });
-    const legacyTeamsDisabled = value => !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 1 && value.enabled === false;
-    function configurationIssue(value) {
-      for (const source of ['ui', 'policy']) if (value?.[source]?.teams?.enabled === true) return { code: 'TEAM_ROUTING_REMOVED', message: en.teamRemoved, source, original: clone(value[source]) };
-      for (const source of ['ui', 'policy']) if (isLegacyConfig(value?.[source])) return { code: 'LEGACY_CONFIGURATION', message: en.legacyConfiguration, source, original: clone(value[source]) };
-    }
+    // Validate the sole fixed-candidate configuration before exposing an editable draft.
+    const emptyDraft = () => ({ schemaVersion: 3, enabled: false, candidates: [], limits: { maxPendingStarts: 32, maxActivePerModel: 8, maxCreationsPerParent: 64, metadataTimeoutMs: 5000 } });
+    const PLUGIN_KEYS = ['ui', 'auditFile'];
+    const UI_KEYS = ['schemaVersion', 'enabled', 'candidates', 'defaultCandidateId', 'limits'];
+    const CANDIDATE_KEYS = ['id', 'name', 'provider', 'model', 'effort', 'description'];
+    const LIMIT_KEYS = ['maxPendingStarts', 'maxActivePerModel', 'maxCreationsPerParent', 'metadataTimeoutMs'];
     function withDefaults(value) {
       const raw = clone(value), ui = { ...emptyDraft(), ...raw };
-      if (raw?.presets === undefined) { ui.presets = createDefaultPresets(); if (ui.defaultPreset === undefined) ui.defaultPreset = DEFAULT_PRESET_ID; }
       ui.limits = { ...emptyDraft().limits, ...ui.limits };
-      if (legacyTeamsDisabled(ui.teams)) delete ui.teams;
       return ui;
     }
-    const sourceConflict = value => value?.ui !== undefined && value?.policy !== undefined;
-    const migrationRequired = value => ['ui', 'policy'].some(source => isLegacyConfig(value?.[source]));
-    const isLegacyConfig = value => !!value && typeof value === 'object' && !Array.isArray(value) && (value.schemaVersion === 1 || value.schemaVersion === undefined && !Object.hasOwn(value, 'presets') && Object.keys(value).length > 0);
+    // Strict v3 guard: a stored policy key (even undefined-valued), a non-v3
+    // schemaVersion, malformed structures or any unrecognized persistent key is
+    // read-only invalid data, never a fresh empty draft and never auto-repaired.
     function invalidSource(value) {
-      const source = value?.ui !== undefined ? value.ui : value?.policy;
+      if (value && typeof value === 'object' && !Array.isArray(value) &&
+          (Object.hasOwn(value, 'policy') || Object.keys(value).some(key => !PLUGIN_KEYS.includes(key)) ||
+           value.auditFile !== undefined && typeof value.auditFile !== 'string')) return true;
+      const source = value?.ui;
       if (source === undefined) return false;
       if (!source || typeof source !== 'object' || Array.isArray(source)) return true;
-      if (source.teams !== undefined && source.teams?.enabled !== true && !legacyTeamsDisabled(source.teams)) return true;
-      if (isLegacyConfig(source)) return false;
       const object = item => item && typeof item === 'object' && !Array.isArray(item);
-      return source.schemaVersion !== undefined && source.schemaVersion !== 2 ||
-        source.presets !== undefined && (!Array.isArray(source.presets) || source.presets.some(item => !object(item))) ||
-        source.limits !== undefined && !object(source.limits) || source.teams !== undefined && !object(source.teams);
+      if (source.schemaVersion !== 3) return true;
+      for (const key of Object.keys(source)) if (!UI_KEYS.includes(key)) return true;
+      if (source.enabled !== undefined && typeof source.enabled !== 'boolean') return true;
+      if (source.candidates !== undefined && (!Array.isArray(source.candidates) || source.candidates.some(item =>
+        !object(item) || Object.keys(item).some(key => !CANDIDATE_KEYS.includes(key))))) return true;
+      if (source.limits !== undefined && (!object(source.limits) || Object.keys(source.limits).some(key => !LIMIT_KEYS.includes(key)))) return true;
+      return false;
     }
     function draftFrom(value) {
-      if (configurationIssue(value) || invalidSource(value)) return emptyDraft();
-      return withDefaults(value?.ui ?? value?.policy);
+      if (invalidSource(value)) return emptyDraft();
+      return withDefaults(value?.ui);
     }
-    // Equality normalization fills documented defaults only; never hides extras.
+    // Equality normalization fills documented defaults only for legitimate v3
+    // sources; a bad source (for example an explicit empty {}) is preserved as-is
+    // so comparisons stay unequal instead of fabricating a valid acknowledgement.
     function normalizeAckUi(value) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+      if (invalidSource({ ui: value })) return value;
       const ui = withDefaults(value);
-      if (Array.isArray(ui.presets)) ui.presets = ui.presets.map(preset => ({ description: '', ...preset }));
+      if (Array.isArray(ui.candidates)) ui.candidates = ui.candidates.map(candidate => ({ description: '', ...candidate }));
       return ui;
     }
     function validDraft(ui) {
-      if (ui.schemaVersion !== 2 || !Array.isArray(ui.presets) || ui.presets.length > 128 || ui.teams !== undefined && !legacyTeamsDisabled(ui.teams)) return false;
+      if (ui.schemaVersion !== 3 || !Array.isArray(ui.candidates) || ui.candidates.length > 128) return false;
       const text = (value, max) => typeof value === 'string' && value.length > 0 && value.length <= max && value.trim() === value && !/[\x00-\x1f\x7f]/.test(value);
       const limits = ui.limits;
+      for (const key of Object.keys(ui)) if (!UI_KEYS.includes(key)) return false;
       if (ui.enabled !== undefined && typeof ui.enabled !== 'boolean') return false;
       if (limits !== undefined) {
         if (!limits || typeof limits !== 'object' || Array.isArray(limits)) return false;
-        for (const key of ['maxPendingStarts', 'maxActivePerModel', 'maxCreationsPerParent', 'metadataTimeoutMs']) {
+        for (const key of Object.keys(limits)) if (!LIMIT_KEYS.includes(key)) return false;
+        for (const key of LIMIT_KEYS) {
           const value = limits[key], max = key === 'metadataTimeoutMs' ? 600000 : 1000000;
           if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > max)) return false;
         }
       }
       const ids = new Set();
-      for (const preset of ui.presets) {
-        if (!preset || !text(preset.id,120) || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,119}$/.test(preset.id) || ids.has(preset.id) || !text(preset.name,120)) return false;
-        if (preset.modelSource === 'parent') { if (Object.hasOwn(preset, 'provider') || Object.hasOwn(preset, 'model')) return false; }
-        else if (Object.hasOwn(preset, 'modelSource') || !text(preset.provider,200) || !text(preset.model,200)) return false;
-        if (preset.effort !== null && (!text(preset.effort,200) || preset.effort === 'default')) return false;
-        if (preset.description !== undefined && preset.description !== '' && !text(preset.description,1000)) return false;
-        ids.add(preset.id);
+      for (const candidate of ui.candidates) {
+        if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return false;
+        for (const key of Object.keys(candidate)) if (!CANDIDATE_KEYS.includes(key)) return false;
+        if (!text(candidate.id,120) || !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,119}$/.test(candidate.id) || ids.has(candidate.id) || !text(candidate.name,120)) return false;
+        if (!text(candidate.provider,200) || !text(candidate.model,200)) return false;
+        if (candidate.effort !== null && (!text(candidate.effort,200) || candidate.effort === 'default')) return false;
+        if (candidate.description !== undefined && candidate.description !== '' && !text(candidate.description,1000)) return false;
+        ids.add(candidate.id);
       }
-      return (!ui.enabled || ids.has(ui.defaultPreset)) && (ui.defaultPreset === undefined || ids.has(ui.defaultPreset));
+      return (!ui.enabled || ids.has(ui.defaultCandidateId)) && (ui.defaultCandidateId === undefined || ids.has(ui.defaultCandidateId));
     }
     const CATALOG_EVENTS = ['llm/adapters-updated', 'llm/models-updated', 'settings/document-updated', 'credentials/record-updated', 'credentials/reference-updated'];
     const modelKey = model => JSON.stringify([model.provider, model.model]);
@@ -312,26 +292,23 @@ window.__ModuleLoader__.load({
       }
       select(editor, index, key, expected) {
         if (this.disposed || this.snapshot.status !== 'ready') return false;
-        const preset = editor.getSnapshot().draft.presets[index];
-        if (!preset || expected && stable(preset) !== stable(expected)) return false;
+        const candidate = editor.getSnapshot().draft.candidates[index];
+        if (!candidate || expected && stable(candidate) !== stable(expected)) return false;
         for (const group of this.snapshot.groups) for (const model of group.models) {
           if (key !== modelKey({ provider: group.id, model: model.id }) || !this.find(group.id, model.id)) continue;
           const options = catalogEfforts(model, editor.t);
           // Only a verified effort-less record yields null; no catalog is not null.
-          const effort = preset.modelSource === 'parent' ? preset.effort : options.some(option => option.id === null) ? null : options.some(option => option.id === model.reasoning?.defaultEffort) ? model.reasoning.defaultEffort : '';
-          return editor.edit(next => {
-            Object.assign(next.presets[index], { provider: group.id, model: model.id, effort });
-            delete next.presets[index].modelSource;
-          });
+          const effort = options.some(option => option.id === null) ? null : options.some(option => option.id === model.reasoning?.defaultEffort) ? model.reasoning.defaultEffort : '';
+          return editor.edit(next => { Object.assign(next.candidates[index], { provider: group.id, model: model.id, effort }); });
         }
         return false;
       }
       setEffort(editor, index, value, expected) {
-        const preset = editor.getSnapshot().draft.presets[index];
-        if (this.disposed || !preset || Object.hasOwn(preset, 'modelSource') || expected && (expected.modelSource !== undefined || preset.id !== expected.id || modelKey(preset) !== modelKey(expected))) return false;
-        const option = catalogEfforts(this.find(preset.provider, preset.model), editor.t).find(option => effortKey(option.id) === value);
+        const candidate = editor.getSnapshot().draft.candidates[index];
+        if (this.disposed || !candidate || expected && (candidate.id !== expected.id || modelKey(candidate) !== modelKey(expected))) return false;
+        const option = catalogEfforts(this.find(candidate.provider, candidate.model), editor.t).find(option => effortKey(option.id) === value);
         if (!option) return false;
-        return editor.edit(next => { next.presets[index].effort = option.id; });
+        return editor.edit(next => { next.candidates[index].effort = option.id; });
       }
       dispose() {
         if (this.disposed) return;
@@ -377,13 +354,16 @@ window.__ModuleLoader__.load({
         if (value) this.cancelAutosave(); else this.scheduleAutosave();
       }
       publish() {
-        this.snapshot = { status: this.host?.status, writable: this.host?.writable, draft: this.draft, dirty: this.dirty, saving: this.saving, reloading: this.reloading, saved: this.saved, savedButNotLive: this.savedButNotLive, autosavePaused: this.autosavePaused, error: this.error, conflicted: this.conflicted, migrationRequired: migrationRequired(this.host?.value) || migrationRequired(this.host?.user), invalidSource: invalidSource(this.host?.value) || invalidSource(this.host?.user), configurationIssue: configurationIssue(this.host?.value) ?? configurationIssue(this.host?.user), sourceConflict: sourceConflict(this.host?.value) || sourceConflict(this.host?.user), policySource: this.host?.value?.policy !== undefined, auditFile: this.host?.value?.auditFile, receiptUnverified: this.receiptUnverified, connectionReset: this.connectionReset };
+        const badDoc = invalidSource(this.host?.user) ? this.host.user : invalidSource(this.host?.value) ? this.host.value : undefined;
+        const invalidOriginal = badDoc ? clone(Object.keys(badDoc).some(key => key !== 'policy' && !PLUGIN_KEYS.includes(key)) ||
+          badDoc.auditFile !== undefined && typeof badDoc.auditFile !== 'string' ? badDoc : badDoc.policy !== undefined ? badDoc.policy : badDoc.ui) : undefined;
+        this.snapshot = { status: this.host?.status, writable: this.host?.writable, draft: this.draft, dirty: this.dirty, saving: this.saving, reloading: this.reloading, saved: this.saved, savedButNotLive: this.savedButNotLive, autosavePaused: this.autosavePaused, error: this.error, conflicted: this.conflicted, invalidSource: !!badDoc, invalidOriginal, auditFile: this.host?.value?.auditFile, receiptUnverified: this.receiptUnverified, connectionReset: this.connectionReset };
         for (const listener of this.listeners) listener();
       }
       subscribe = listener => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
       getSnapshot = () => this.snapshot;
       editable() {
-        return !this.disposed && !this.conflicted && !this.saving && !this.reloading && !this.connectionReset && this.host.writable && this.host.status === 'ready' && !this.receiptUnverified && !configurationIssue(this.host.value) && !configurationIssue(this.host.user) && !invalidSource(this.host.value) && !invalidSource(this.host.user) && !sourceConflict(this.host.value) && !sourceConflict(this.host.user);
+        return !this.disposed && !this.conflicted && !this.saving && !this.reloading && !this.connectionReset && this.host.writable && this.host.status === 'ready' && !this.receiptUnverified && !invalidSource(this.host.value) && !invalidSource(this.host.user);
       }
       edit(update) {
         if (!this.editable()) return false;
@@ -392,27 +372,12 @@ window.__ModuleLoader__.load({
         if (!this.autosavePaused) { this.savedButNotLive = false; this.error = ''; }
         this.scheduleAutosave(); this.publish(); return true;
       }
-      addPreset() {
-        if (this.draft.presets.length >= 128) return false;
-        let index = 1; while (this.draft.presets.some(preset => preset.id === 'preset-' + index)) index++;
-        return this.edit(next => next.presets.push({ id: 'preset-' + index, name: '', modelSource: 'parent', effort: 'high', description: '' }));
-      }
-      addDefaultPresets() {
-        const additions = createDefaultPresets().filter(template => !this.draft.presets.some(preset => preset.id === template.id));
-        if (!additions.length || this.draft.presets.length + additions.length > 128) return false;
-        return this.edit(next => { next.presets.push(...additions); });
-      }
-      inheritModel(index, expected) {
-        const preset = this.draft.presets[index];
-        if (!preset || expected && stable(preset) !== stable(expected)) return false;
-        return this.edit(next => { next.presets[index].modelSource = 'parent'; delete next.presets[index].provider; delete next.presets[index].model; });
-      }
-      setInheritedEffort(index, value, expected) {
-        const preset = this.draft.presets[index];
-        if (!preset || preset.modelSource !== 'parent' || expected && stable(preset) !== stable(expected)) return false;
-        const template = createDefaultPresets().find(item => effortKey(item.effort) === value);
-        if (!template) return false;
-        return this.edit(next => { next.presets[index].effort = template.effort; });
+      addCandidate() {
+        if (this.draft.candidates.length >= 128) return false;
+        let index = 1; while (this.draft.candidates.some(candidate => candidate.id === 'candidate-' + index)) index++;
+        // A fresh candidate is deliberately unfinished: empty strings block autosave
+        // until the user picks an exact model and effort; never null, never a tier.
+        return this.edit(next => next.candidates.push({ id: 'candidate-' + index, name: '', provider: '', model: '', effort: '', description: '' }));
       }
       resetConnection() {
         if (this.disposed) return;
@@ -422,8 +387,11 @@ window.__ModuleLoader__.load({
         this.error = this.t('connectionReset'); this.publish();
       }
       confirmReceipt(current) {
-        if (current.status !== 'ready' || current.user?.policy !== undefined || stable(current.user?.ui) !== stable(this.pendingDesired)) return false;
-        const effective = current.value?.policy === undefined && stable(normalizeAckUi(current.value?.ui)) === stable(normalizeAckUi(this.pendingDesired));
+        if (current.status !== 'ready' || stable(current.user?.ui) !== stable(this.pendingDesired)) return false;
+        // An effective match alone is not a receipt: the surrounding documents must
+        // also be legitimate v3 sources; outer illegal keys keep the save not-live.
+        const effective = !invalidSource(current.user) && !invalidSource(current.value) &&
+          stable(normalizeAckUi(current.value?.ui)) === stable(normalizeAckUi(this.pendingDesired));
         this.receiptUnverified = false; this.pendingDesired = undefined;
         this.autosavePaused = !effective;
         this.dirty = false; this.saved = effective; this.savedButNotLive = !effective; this.conflicted = false; this.baseRevision = current.revision;
@@ -459,13 +427,12 @@ window.__ModuleLoader__.load({
         if (this.conflicted || this.form.getSnapshot().revision !== this.baseRevision) { this.conflicted = true; this.publish(); return false; }
         if (!this.editable() || !validDraft(this.draft)) { this.error = this.t('invalidDraft'); this.publish(); return false; }
         const desired = clone(this.draft), revision = this.baseRevision, generation = this.generation;
-        if (legacyTeamsDisabled(desired.teams)) delete desired.teams;
         // Only a verified receipt (or explicit reload) releases automatic saving.
         this.autosavePaused = true;
         this.saving = true; this.error = ''; this.saved = false; this.pendingDesired = desired; this.receiptUnverified = true; this.publish();
         let accepted = false;
         try {
-          const response = await this.ctx.remote.settings.mutate(ENTRY, [ { op: 'unset', path: ['policy'] }, { op: 'set', path: ['ui'], value: desired } ], revision);
+          const response = await this.ctx.remote.settings.mutate(ENTRY, [ { op: 'set', path: ['ui'], value: desired } ], revision);
           if (this.disposed || generation !== this.generation) return false;
           if (!response.ok) { this.error = response.error.message; this.conflicted = response.error.code === 'settings/conflict'; this.receiptUnverified = false; this.pendingDesired = undefined; }
           else accepted = true;
@@ -489,54 +456,48 @@ window.__ModuleLoader__.load({
       const state = React.useSyncExternalStore(editor.subscribe, editor.getSnapshot, editor.getSnapshot);
       const catalogState = React.useSyncExternalStore(catalog?.subscribe ?? (() => () => {}), catalog?.getSnapshot ?? (() => emptyCatalog), catalog?.getSnapshot ?? (() => emptyCatalog));
       if (view === 'summary') return h('span', null, t('summary'));
-      const ui = state.draft ?? defaults();
-      const busy = state.status !== 'ready' || !state.writable || state.saving || state.reloading || state.connectionReset || state.receiptUnverified || state.sourceConflict || state.invalidSource || !!state.configurationIssue;
+      const ui = state.draft ?? emptyDraft();
+      const busy = state.status !== 'ready' || !state.writable || state.saving || state.reloading || state.connectionReset || state.receiptUnverified || state.invalidSource;
       const disabled = busy || state.conflicted;
-      const defaultAdditions = createDefaultPresets().filter(template => !ui.presets.some(preset => preset.id === template.id));
       const edit = update => editor.edit(update);
       const button = (key, action, off = false) => h('button', { type: 'button', style: buttonStyle, disabled: off, onClick: action }, t(key));
       const input = (key, value, set, type = 'text', off = disabled, maxLength) => h('label', { style: fieldStyle }, h('span', null, t(key)), h('input', { style: type === 'checkbox' ? { minWidth: 24, minHeight: 24 } : inputStyle, 'aria-label': t(key), type, disabled: off, maxLength, onCompositionStart: () => editor.setComposing(true), onCompositionEnd: () => editor.setComposing(false), ...(type === 'checkbox' ? { checked: !!value } : { value: value ?? '' }), onChange: event => set(type === 'checkbox' ? event.target.checked : type === 'number' ? Number(event.target.value) : event.target.value) }));
       const group = (title, children) => h('fieldset', { style: { minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', border: '1px solid var(--dsw-alias-border-secondary, #777)', borderRadius: 8, padding: 16, margin: '16px 0' } }, h('legend', { style: { maxWidth: '100%', overflowWrap: 'anywhere' } }, title), children);
       const grid = children => h('div', { style: { display: 'grid', minWidth: 0, gridTemplateColumns: 'repeat(auto-fit,minmax(min(240px,100%),1fr))', gap: 16, alignItems: 'end' } }, children);
       const json = value => h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '100%' } }, JSON.stringify(value, null, 2));
-      const rows = ui.presets.map((preset, index) => {
-        const set = (key, value) => edit(next => { if (next.presets[index]?.id === preset.id) next.presets[index][key] = value; });
-        const inherited = preset.modelSource === 'parent';
-        const current = inherited ? undefined : catalog?.find(preset.provider, preset.model);
-        const options = inherited ? createDefaultPresets().map(template => ({ id: template.effort, name: template.name + ' — ' + t('templateEffort') })) : catalogEfforts(current, t);
-        const known = options.some(option => option.id === preset.effort);
-        const failed = catalogState.failures.some(failure => failure.id === preset.provider);
-        const missing = !inherited && !current && !!preset.provider && !!preset.model;
+      const rows = ui.candidates.map((candidate, index) => {
+        const set = (key, value) => edit(next => { if (next.candidates[index]?.id === candidate.id) next.candidates[index][key] = value; });
+        const current = catalog?.find(candidate.provider, candidate.model);
+        const options = catalogEfforts(current, t);
+        const known = options.some(option => option.id === candidate.effort);
+        const failed = catalogState.failures.some(failure => failure.id === candidate.provider);
+        const missing = !current && !!candidate.provider && !!candidate.model;
         const modelPicker = h('label', { style: fieldStyle }, h('span', null, t('chooseModel')),
-          h('select', { style: inputStyle, 'aria-label': t('chooseModel'), disabled, value: inherited ? PARENT_MODEL_KEY : preset.provider && preset.model ? modelKey(preset) : '', onChange: event => event.target.value === PARENT_MODEL_KEY ? editor.inheritModel(index, preset) : catalog?.select(editor, index, event.target.value, preset) },
-            h('option', { value: PARENT_MODEL_KEY }, t('inheritModel')),
-            !inherited && !preset.provider && !preset.model ? h('option', { value: '', disabled: true }, t('chooseModel')) : null,
-            missing ? h('option', { value: modelKey(preset), disabled: true }, preset.provider + ' / ' + preset.model) : null,
+          h('select', { style: inputStyle, 'aria-label': t('chooseModel'), disabled, value: candidate.provider && candidate.model ? modelKey(candidate) : '', onChange: event => catalog?.select(editor, index, event.target.value, candidate) },
+            !candidate.provider && !candidate.model ? h('option', { value: '', disabled: true }, t('chooseModel')) : null,
+            missing ? h('option', { value: modelKey(candidate), disabled: true }, candidate.provider + ' / ' + candidate.model) : null,
             catalogState.groups.map(provider => h('optgroup', { key: provider.id, label: provider.name + ' (' + provider.id + ')', disabled: catalogState.status !== 'ready' || catalogState.failures.some(failure => failure.id === provider.id) },
               provider.models.map(item => h('option', { key: item.id, value: modelKey({ provider: provider.id, model: item.id }) }, item.name + ' — ' + item.id))))),
-          inherited ? h('span', { role: 'status' }, t('inheritHelp')) : h('code', { style: { overflowWrap: 'anywhere', whiteSpace: 'normal' } }, preset.provider + ' / ' + preset.model),
+          candidate.provider && candidate.model ? h('code', { style: { overflowWrap: 'anywhere', whiteSpace: 'normal' } }, candidate.provider + ' / ' + candidate.model) : null,
           missing ? h('span', { role: 'status' }, t(catalogState.status === 'ready' && !failed ? 'catalogMissing' : 'catalogUnverified')) : null);
         const effortPicker = h('label', { style: fieldStyle }, h('span', null, t('effort')),
-          h('select', { style: inputStyle, 'aria-label': t('effort'), value: preset.effort === '' || preset.effort === undefined ? '' : effortKey(preset.effort), disabled: disabled || !inherited && !current, onChange: event => inherited ? editor.setInheritedEffort(index, event.target.value, preset) : catalog?.setEffort(editor, index, event.target.value, preset) },
+          h('select', { style: inputStyle, 'aria-label': t('effort'), value: candidate.effort === '' || candidate.effort === undefined ? '' : effortKey(candidate.effort), disabled: disabled || !current, onChange: event => catalog?.setEffort(editor, index, event.target.value, candidate) },
             h('option', { value: '', disabled: true }, t('chooseEffort')),
-            !known && preset.effort !== '' && preset.effort !== undefined ? h('option', { value: effortKey(preset.effort), disabled: true }, String(preset.effort) + ' — ' + t(inherited ? 'retainedEffort' : 'unknownEffort')) : null,
+            !known && candidate.effort !== '' && candidate.effort !== undefined ? h('option', { value: effortKey(candidate.effort), disabled: true }, String(candidate.effort) + ' — ' + t('unknownEffort')) : null,
             options.map(option => h('option', { key: effortKey(option.id), value: effortKey(option.id) }, option.name + (option.id === null ? '' : ' (' + option.id + ')')))),
-          inherited ? h('span', { role: 'status' }, t('inheritEffortHelp')) : null,
-          preset.effort === '' ? h('span', { role: 'status' }, t('effortRequired')) : null,
+          candidate.effort === '' || candidate.effort === undefined ? h('span', { role: 'status' }, t('effortRequired')) : null,
           options.some(option => option.id === null) ? h('span', { role: 'status' }, t('noReasoning')) : null);
-        return h('div', { key: index, 'data-preset': preset.id }, group(preset.name || t('name') + ' ' + (index + 1), [
-          grid([h('div', { style: fieldStyle }, input('name', preset.name, value => set('name', value), 'text', disabled, 120), h('code', { 'aria-label': t('id'), style: { overflowWrap: 'anywhere', whiteSpace: 'normal' } }, t('id') + ': ' + preset.id)), modelPicker, effortPicker]),
-          h('div', { style: { marginTop: 16 } }, input('description', preset.description, value => set('description', value), 'text', disabled, 1000)),
-          h('div', { style: { marginTop: 16 } }, button('remove', () => edit(next => { if (next.presets[index]?.id === preset.id) next.presets.splice(index, 1); }), disabled))
+        return h('div', { key: index, 'data-candidate': candidate.id }, group(candidate.name || t('name') + ' ' + (index + 1), [
+          grid([h('div', { style: fieldStyle }, input('name', candidate.name, value => set('name', value), 'text', disabled, 120), h('code', { 'aria-label': t('id'), style: { overflowWrap: 'anywhere', whiteSpace: 'normal' } }, t('id') + ': ' + candidate.id)), modelPicker, effortPicker]),
+          h('div', { style: { marginTop: 16 } }, input('description', candidate.description, value => set('description', value), 'text', disabled, 1000)),
+          h('div', { style: { marginTop: 16 } }, button('remove', () => edit(next => { if (next.candidates[index]?.id === candidate.id) next.candidates.splice(index, 1); }), disabled))
         ]));
       });
       return h('section', { style: { color: 'var(--dsw-alias-label-primary, inherit)', padding: '16px 0', minWidth: 0, maxWidth: '100%', lineHeight: 1.6 } },
         h('h2', null, t('title')), h('p', null, t('summary')),
         state.status !== 'ready' ? h('p', { role: 'status' }, t(state.status === 'loading' ? 'loading' : 'unavailable')) : null,
         state.status === 'ready' && !state.writable ? h('p', { role: 'status' }, t('readOnly')) : null,
-        state.sourceConflict ? h('p', { role: 'alert' }, t('sourceConflict')) : null,
-        state.invalidSource ? h('p', { role: 'alert' }, t('invalidSource')) : null,
-        state.configurationIssue ? group(state.configurationIssue.code, [h('p', { role: 'alert' }, t(state.configurationIssue.code === 'TEAM_ROUTING_REMOVED' ? 'teamRemoved' : 'legacyConfiguration')), h('details', null, h('summary', null, t('configurationOriginal')), json(state.configurationIssue.original))]) : null,
+        state.invalidSource ? group(t('invalidSourceTitle'), [h('p', { role: 'alert' }, t('invalidSource')), h('details', null, h('summary', null, t('originalConfiguration')), json(state.invalidOriginal))]) : null,
         h('div', { 'data-autosave': true, style: { position: 'sticky', top: 0, zIndex: 1, padding: '12px 0', background: 'var(--dsw-alias-background-primary, #fff)', borderBottom: '1px solid var(--dsw-alias-border-secondary, #777)' } },
           h('div', { role: 'status', 'aria-live': 'polite', 'aria-atomic': true }, t(state.saving ? 'saving' : state.savedButNotLive ? 'savedButNotLive' : state.error || state.conflicted ? 'autosaveFailed' : state.dirty ? validDraft(ui) ? 'autosavePending' : 'autosaveIncomplete' : state.saved ? 'saved' : 'autosave')),
           state.conflicted ? h('p', { role: 'alert' }, t('conflict')) : null,
@@ -544,12 +505,11 @@ window.__ModuleLoader__.load({
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 8 } },
             state.error && state.dirty && !state.receiptUnverified && !state.connectionReset && !state.conflicted ? button('retry', () => editor.save(), disabled || !validDraft(ui)) : null,
             button(state.dirty && !state.receiptUnverified || state.connectionReset ? 'cancel' : 'refresh', () => editor.reload(), state.saving || state.reloading))),
-        state.policySource && !state.configurationIssue ? h('p', { role: 'status' }, t('policySource')) : null,
         grid([input('enabled', ui.enabled, value => edit(next => { next.enabled = value; }), 'checkbox'),
-          h('label', { style: fieldStyle }, h('span', null, t('defaultPreset')), h('select', { style: inputStyle, 'aria-label': t('defaultPreset'), value: ui.defaultPreset ?? '', disabled, onChange: event => { const draft = editor.getSnapshot().draft; if (event.target.value === '' && !draft.enabled) edit(next => { delete next.defaultPreset; }); else if (draft.presets.filter(preset => preset.id === event.target.value).length === 1) edit(next => { next.defaultPreset = event.target.value; }); } },
+          h('label', { style: fieldStyle }, h('span', null, t('defaultCandidate')), h('select', { style: inputStyle, 'aria-label': t('defaultCandidate'), value: ui.defaultCandidateId ?? '', disabled, onChange: event => { const draft = editor.getSnapshot().draft; if (event.target.value === '' && !draft.enabled) edit(next => { delete next.defaultCandidateId; }); else if (draft.candidates.filter(candidate => candidate.id === event.target.value).length === 1) edit(next => { next.defaultCandidateId = event.target.value; }); } },
             h('option', { value: '', disabled: !!ui.enabled }, t('chooseDefault')),
-            ui.defaultPreset && !ui.presets.some(preset => preset.id === ui.defaultPreset) ? h('option', { value: ui.defaultPreset, disabled: true }, ui.defaultPreset) : null,
-            ui.presets.filter(preset => preset.id && ui.presets.filter(other => other.id === preset.id).length === 1).map(preset => h('option', { key: preset.id, value: preset.id }, (preset.name || preset.id) + ' — ' + preset.id))))]),
+            ui.defaultCandidateId && !ui.candidates.some(candidate => candidate.id === ui.defaultCandidateId) ? h('option', { value: ui.defaultCandidateId, disabled: true }, ui.defaultCandidateId) : null,
+            ui.candidates.filter(candidate => candidate.id && ui.candidates.filter(other => other.id === candidate.id).length === 1).map(candidate => h('option', { key: candidate.id, value: candidate.id }, (candidate.name || candidate.id) + ' — ' + candidate.id))))]),
         h('p', null, t('authority')),
         h('h3', null, t('catalog')), h('p', null, t('catalogHelp')),
         button('catalogRefresh', () => catalog?.load(), !catalog || catalogState.status === 'loading'),
@@ -557,9 +517,8 @@ window.__ModuleLoader__.load({
         catalogState.status === 'error' ? h('p', { role: 'alert' }, t('catalogFailed') + ' ' + catalogState.error) : null,
         catalogState.failures.length ? h('div', { role: 'alert' }, h('p', null, t('catalogPartial')), h('ul', null, catalogState.failures.map(failure => h('li', { key: failure.id }, failure.name + ' (' + failure.id + '): ' + failure.message)))) : null,
         catalogState.status === 'ready' && !catalogState.groups.some(provider => provider.models.length) ? h('p', { role: 'status' }, t('catalogEmpty')) : null,
-        h('h3', null, t('presets')), rows.length ? rows : h('p', null, t('noPresets')),
-        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12 } }, button('addPreset', () => editor.addPreset(), disabled || ui.presets.length >= 128), button('addDefaults', () => editor.addDefaultPresets(), disabled || !defaultAdditions.length || ui.presets.length + defaultAdditions.length > 128)),
-        h('p', null, t('defaultsHelp')),
+        h('h3', null, t('candidates')), rows.length ? rows : h('p', null, t('noCandidates')),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12 } }, button('addCandidate', () => editor.addCandidate(), disabled || ui.candidates.length >= 128)),
         h('details', { style: { margin: '24px 0' } }, h('summary', null, t('advanced')),
           group(t('limits'), grid(['maxPendingStarts','maxActivePerModel','maxCreationsPerParent','metadataTimeoutMs'].map(key => input(key, ui.limits[key], value => edit(next => { next.limits[key] = value; }), 'number')))),
           h('h3', null, t('auditFile')), h('code', { style: { overflowWrap: 'anywhere' } }, state.auditFile ?? '—'), h('p', null, t('auditHelp'))),
@@ -589,6 +548,6 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.slots.inject(name, () => ctx.slots.register({ name, key }, component)), 'delegation-router: ' + name);
       }
     }
-    return { inject: ['slots', 'locale', 'configForms', 'remote', 'remote.settings', 'remote.session'], apply, RouterEditor, RouterPage, ModelCatalog, normalizeCatalog, modelKey, catalogEfforts, effortKey, CATALOG_EVENTS, createDefaultPresets, DEFAULT_PRESET_ID, PARENT_MODEL_KEY, emptyDraft, defaults, draftFrom, normalizeAckUi, validDraft, dictionaries: { zh, en } };
+    return { inject: ['slots', 'locale', 'configForms', 'remote', 'remote.settings', 'remote.session'], apply, RouterEditor, RouterPage, ModelCatalog, normalizeCatalog, modelKey, catalogEfforts, effortKey, CATALOG_EVENTS, emptyDraft, draftFrom, normalizeAckUi, validDraft, dictionaries: { zh, en } };
   }
 });

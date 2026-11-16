@@ -53,7 +53,7 @@ const child=Session.create(header.id,events,header,0);live.set(child.id,child);
 assert.deepEqual(await readers.readChildRoute(parent,child.id),{provider:'p',model:'m',effort:'low'});
 await assert.rejects(readers.readCompletion(parent,child.id),{code:'CHILD_NOT_SETTLED'});
 const settled=[],handlers=createLifecycleHandlers({getSession:id=>live.get(id),...readers,settle:(...args)=>settled.push(args)});
-// rc.1/rc.2 SubagentRunInfo shape; manually dispatched, never a real manager activation.
+// Current shipped SubagentRunInfo shape; manually dispatched, never a real manager activation.
 const info=Object.freeze({runId:'detached-lifecycle-run',provider:'local',parentSessionId:parent.id,id:child.id,local:true});
 const carrier={agent:parent},dispatched=[],pending=[],warnings=[];
 assert.equal(typeof createLifecycleEmitter,'function','Host must expose createLifecycleEmitter; no version skip');

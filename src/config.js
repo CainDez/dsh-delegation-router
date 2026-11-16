@@ -1,8 +1,6 @@
-import { createDefaultPresets, DEFAULT_PRESET_ID } from './default-presets.js';
-
-/** Strict, data-only presets for child-agent creation. */
+/** Strict, data-only fixed candidates for child-agent creation. */
 const FORBIDDEN = new Set(['__proto__', 'prototype', 'constructor']);
-const MAX_PRESETS = 128;
+const MAX_CANDIDATES = 128;
 
 function invalid(message) {
   throw Object.assign(new Error(message), { code: 'INVALID_CONFIG' });
@@ -64,38 +62,29 @@ function freeze(value) {
   return value;
 }
 
-export function normalizeConfig(raw = {}) {
+export function normalizeConfig(raw = { schemaVersion: 3 }) {
   safeData(raw);
-  keys(raw, ['schemaVersion', 'enabled', 'presets', 'defaultPreset', 'limits', 'teams'], 'configuration');
-  if (raw.schemaVersion !== undefined && raw.schemaVersion !== 2) invalid('Unsupported schemaVersion; back up the original and manually replace it with v2 presets');
-  // The sole deprecated read alias is exact teams:{enabled:false}; never emit it.
-  if (Object.hasOwn(raw, 'teams')) {
-    keys(raw.teams, ['enabled'], 'teams');
-    if (raw.teams.enabled === true) throw Object.assign(new Error('Team routing was removed. Remove the teams setting and review the ordinary subagent policy before enabling routing.'), { code: 'TEAM_ROUTING_REMOVED' });
-    if (Object.keys(raw.teams).length !== 1 || raw.teams.enabled !== false) invalid('Only the deprecated teams:{enabled:false} read alias is accepted');
-  }
+  keys(raw, ['schemaVersion', 'enabled', 'candidates', 'defaultCandidateId', 'limits'], 'configuration');
+  // Only the absent entry initializes a fresh empty configuration; every provided source, including {}, must declare v3 itself.
+  if (raw.schemaVersion !== 3) invalid('Unsupported schemaVersion; only schemaVersion 3 configurations are accepted. Reconfigure routing with v3 fixed candidates');
   const enabled = boolean(raw.enabled, 'enabled', false);
-  const useDefaults = raw.presets === undefined;
-  const presetsRaw = useDefaults ? createDefaultPresets() : raw.presets;
-  if (!Array.isArray(presetsRaw) || presetsRaw.length > MAX_PRESETS || (enabled && !presetsRaw.length)) invalid('Invalid presets list');
+  const candidatesRaw = raw.candidates === undefined ? [] : raw.candidates;
+  if (!Array.isArray(candidatesRaw) || candidatesRaw.length > MAX_CANDIDATES || (enabled && !candidatesRaw.length)) invalid('Invalid candidates list');
   const ids = new Set();
-  const presets = presetsRaw.map(preset => {
-    keys(preset, ['id', 'name', 'modelSource', 'provider', 'model', 'effort', 'description'], 'preset');
-    const inheritsParent = Object.hasOwn(preset, 'modelSource');
-    if (inheritsParent && preset.modelSource !== 'parent') invalid('Invalid preset modelSource');
-    if (inheritsParent && (Object.hasOwn(preset, 'provider') || Object.hasOwn(preset, 'model'))) invalid('Inherited presets cannot specify provider or model');
-    const presetId = id(preset.id, 'preset id');
-    if (ids.has(presetId)) invalid('Duplicate preset id: ' + presetId);
-    ids.add(presetId);
-    const effort = preset.effort === null ? null : text(preset.effort, 'preset effort');
-    if (effort === 'default') invalid('Preset effort must be an exact advertised value, not default');
-    const result = { id: presetId, name: text(preset.name, 'preset name', 120),
-      ...(inheritsParent ? { modelSource: 'parent' } : { provider: text(preset.provider, 'provider'), model: text(preset.model, 'model') }), effort };
-    if (preset.description !== undefined) result.description = preset.description === '' ? '' : text(preset.description, 'preset description', 1000);
+  const candidates = candidatesRaw.map(candidate => {
+    keys(candidate, ['id', 'name', 'provider', 'model', 'effort', 'description'], 'candidate');
+    const candidateId = id(candidate.id, 'candidate id');
+    if (ids.has(candidateId)) invalid('Duplicate candidate id: ' + candidateId);
+    ids.add(candidateId);
+    const effort = candidate.effort === null ? null : text(candidate.effort, 'candidate effort');
+    if (effort === 'default') invalid('Candidate effort must be an exact advertised value, not default');
+    const result = { id: candidateId, name: text(candidate.name, 'candidate name', 120),
+      provider: text(candidate.provider, 'provider'), model: text(candidate.model, 'model'), effort };
+    if (candidate.description !== undefined) result.description = candidate.description === '' ? '' : text(candidate.description, 'candidate description', 1000);
     return result;
   });
-  const defaultPreset = useDefaults && raw.defaultPreset === undefined ? DEFAULT_PRESET_ID : raw.defaultPreset;
-  if ((enabled || defaultPreset !== undefined) && !ids.has(defaultPreset)) invalid('defaultPreset must explicitly reference a preset id');
+  const defaultCandidateId = raw.defaultCandidateId;
+  if ((enabled || defaultCandidateId !== undefined) && !ids.has(defaultCandidateId)) invalid('defaultCandidateId must explicitly reference a candidate id');
   const limitsRaw = raw.limits === undefined ? {} : raw.limits;
   keys(limitsRaw, ['maxPendingStarts', 'maxActivePerModel', 'maxCreationsPerParent', 'metadataTimeoutMs'], 'limits');
   const limits = {
@@ -104,7 +93,7 @@ export function normalizeConfig(raw = {}) {
     maxCreationsPerParent: integer(limitsRaw.maxCreationsPerParent, 'maxCreationsPerParent', 64),
     metadataTimeoutMs: integer(limitsRaw.metadataTimeoutMs, 'metadataTimeoutMs', 5000, 600000),
   };
-  const result = { schemaVersion: 2, enabled, presets, limits };
-  if (defaultPreset !== undefined) result.defaultPreset = defaultPreset;
+  const result = { schemaVersion: 3, enabled, candidates, limits };
+  if (defaultCandidateId !== undefined) result.defaultCandidateId = defaultCandidateId;
   return freeze(result);
 }

@@ -70,33 +70,31 @@ function makeHost({ native = true, authorized = null, extraModels = [] } = {}) {
     effect(fn) { effects.push(fn()); },
     nativeBody: async args => {ctx.catalog.push({id:'child',name:args.name});return {kind:'activation',name:args.name};}
   };
-  const config = { policy: { schemaVersion: 2, enabled: true, presets: [model, ...extraModels], defaultPreset:'primary' }, auditFile: path.join(directory, 'audit-' + ++sequence + '.jsonl') };
+  const config = { ui: { schemaVersion: 3, enabled: true, candidates: [model, ...extraModels], defaultCandidateId:'primary' }, auditFile: path.join(directory, 'audit-' + ++sequence + '.jsonl') };
   const exec = { agent: parent, token: {}, toolSet: {}, callId: 'call-' + sequence, rootCallId: 'root', signal: new AbortController().signal, deferContext() {}, concludeTurn() {} };
   return { ctx, parent, config, exec, definitions, handlers, effects, events, services, sessions, nativeDefinition };
 }
 const request = { prompt: 'Independent useful work', description: 'Do useful work' };
 
-test('inherited discovery and dispatch use effective request header rather than stale Agent creation options',async()=>{
-  const h=makeHost();h.config.policy.presets=[{id:'parent-high',name:'High',modelSource:'parent',effort:'high'}];h.config.policy.defaultPreset='parent-high';
+test('fixed candidate discovery and dispatch ignore stale parent creation options',async()=>{
+  const h=makeHost();h.config.ui.candidates=[{id:'review',name:'Review',provider:'p',model:'m',effort:'high'}];h.config.ui.defaultCandidateId='review';
   const service=new RouterService(h.ctx,h.config);await service[init]();
-  const preview=await h.definitions.get('delegation_routes').definition.execute({},h.exec);
-  assert.equal(preview.defaultPreset,'parent-high');assert.equal(h.ctx.metadataLookups,0);assert.equal(h.ctx.preflights.length,0);
-  assert.equal(preview.presets[0].modelSource,'parent');assert.deepEqual(preview.presets[0].resolvedModel,{provider:'p',model:'m'});
-  const result=await h.definitions.get('routed_subagent').definition.execute({...request,policy_revision:preview.policy_revision},h.exec);
+  const listing=await h.definitions.get('delegation_routes').definition.execute({},h.exec);
+  assert.equal(listing.defaultCandidateId,'review');assert.equal(h.ctx.metadataLookups,0);assert.equal(h.ctx.preflights.length,0);
+  assert.deepEqual(listing.candidates[0],h.config.ui.candidates[0]);
+  const result=await h.definitions.get('routed_subagent').definition.execute({...request,policy_revision:listing.policy_revision},h.exec);
   assert.deepEqual(result.selected,{provider:'p',model:'m',effort:'high'});assert.equal(result.parentRouteUnchanged,true);
-  assert.deepEqual(h.ctx.lastInput.arguments.provider,'p');assert.equal(h.ctx.lastInput.arguments.model,'m');assert.equal(h.ctx.lastInput.arguments.reasoning_effort,'high');
+  assert.equal(h.ctx.lastInput.arguments.provider,'p');assert.equal(h.ctx.lastInput.arguments.model,'m');assert.equal(h.ctx.lastInput.arguments.reasoning_effort,'high');
   assert.deepEqual(h.parent.options,{provider:'created',model:'stale'});
 });
-test('inherited native prepare model drift rejects without dispatch but fixed model override remains valid',async()=>{
-  for(const inherit of [true,false]){
-    const h=makeHost({authorized:[{provider:'p',model:'m'},{provider:'q',model:'n'}]});
-    if(inherit){h.config.policy.presets=[{id:'parent-high',name:'High',modelSource:'parent',effort:'high'}];h.config.policy.defaultPreset='parent-high';}
-    h.ctx.beforePrepared=async()=>{await Promise.resolve();h.parent.session.requestHeader=()=>({config:{provider:'q',model:'n',reasoningEffort:'low'}});};
-    const service=new RouterService(h.ctx,h.config);await service[init]();
-    const start=()=>h.definitions.get('routed_subagent').definition.execute(request,h.exec);
-    if(inherit){await assert.rejects(start(),{code:'STALE_PARENT_ROUTE',definitelyNotStarted:true});assert.deepEqual(h.ctx.stages,['prepare','complete']);assert.deepEqual(service.runtime.journal.load().map(x=>x.status),['intent','rejected']);}
-    else {assert.equal((await start()).selected.model,'m');assert.ok(h.ctx.stages.includes('dispatch'));}
-  }
+
+test('parent route changes do not rebind a fixed candidate while authorization remains valid',async()=>{
+  const h=makeHost({authorized:[{provider:'p',model:'m'},{provider:'q',model:'n'}]});
+  h.ctx.beforePrepared=async()=>{await Promise.resolve();h.parent.session.requestHeader=()=>({config:{provider:'q',model:'n',reasoningEffort:'low'}});};
+  const service=new RouterService(h.ctx,h.config);await service[init]();
+  const result=await h.definitions.get('routed_subagent').definition.execute(request,h.exec);
+  assert.deepEqual(result.selected,{provider:'p',model:'m',effort:'low'});assert.equal(result.parentRouteUnchanged,false);
+  assert.deepEqual(h.ctx.stages,['prepare','dispatch','complete']);
 });
 
 test('authorization projection reads first native policy only without mutating it', () => {
@@ -121,22 +119,19 @@ test('absent native policy uses captured parent delegation route, not stale crea
   assert.throws(() => createAuthorizationReader({ stateOf: () => undefined })(parent), { code: 'AUTHORIZATION_UNAVAILABLE' });
 });
 
-test('native bridge preserves prepare dispatch complete, token scope, canonical value, deferred context and logs', async () => {
-  const h = makeHost(); const calls = [];
-  h.nativeDefinition.output.schema = {type:'object',required:['kind','subagentId'],properties:{kind:{type:'string',const:'activation'},subagentId:{type:'string'}}};
-  const canonical = { kind: 'activation', subagentId: 'child' };
-  const context = { content: 'deferred' }; let concluded = false;
-  h.exec.deferContext = value => calls.push(value); h.exec.concludeTurn = () => { concluded = true; };
-  const pipeline = {
-    async prepare(input) { calls.push('prepare'); assert.equal(input.agent, h.parent); assert.equal(input.parent, h.exec.token); assert.equal(input.toolSet, h.exec.toolSet); return { kind: 'dispatch', exec: input }; },
-    async dispatch() { calls.push('dispatch'); return { kind: 'post-result' }; },
-    async complete() { calls.push('complete'); return { isError: false, value: canonical, content: [{ type: 'text', text: 'rendered' }], additionalContexts: [context], concludesTurn: true }; }
+test('native bridge preserves prepare dispatch complete, token scope, canonical value, deferred context and logs',async()=>{
+  const h=makeHost(),calls=[],canonical={kind:'activation',name:''},context={content:'deferred'};let concluded=false;
+  h.exec.deferContext=value=>calls.push(value);h.exec.concludeTurn=()=>{concluded=true;};
+  const pipeline={
+    async prepare(input){calls.push('prepare');assert.equal(input.agent,h.parent);assert.equal(input.parent,h.exec.token);assert.equal(input.toolSet,h.exec.toolSet);canonical.name=input.arguments.name;return {kind:'dispatch',exec:input};},
+    async dispatch(){calls.push('dispatch');h.ctx.catalog.push({id:'child',name:canonical.name});return {kind:'post-result'};},
+    async complete(){calls.push('complete');return {isError:false,value:canonical,content:[{type:'text',text:'native rendered'}],additionalContexts:[context],concludesTurn:true};}
   };
-  const logNested = async (exec, input, result) => { assert.equal(exec, h.exec); assert.equal(result.value, canonical); h.events.push({ type: "test/nested", data: { parentCallId: input.callId } }); };
-  assert.deepEqual(await createNativeInvoker(h.ctx, pipeline, logNested)(request, h.exec), {kind:'activation',childId:'child'});
-  assert.deepEqual(calls, ['prepare', 'dispatch', 'complete', context]); assert.equal(concluded, true);
-  assert.equal(h.events[0].type, 'test/nested');
-  assert.equal(h.events[0].data.parentCallId, h.exec.callId + ':router');
+  const logNested=async(exec,input,result)=>{assert.equal(exec,h.exec);assert.equal(result.value,canonical);h.events.push({type:'test/nested',data:{parentCallId:input.callId}});};
+  const result=await createNativeInvoker(h.ctx,pipeline,logNested)(request,h.exec);
+  assert.deepEqual(result,{kind:'activation',name:canonical.name,childId:'child'});
+  assert.deepEqual(calls,['prepare','dispatch','complete',context]);assert.equal(concluded,true);
+  assert.equal(h.events[0].type,'test/nested');assert.equal(h.events[0].data.parentCallId,h.exec.callId+':router');
 });
 
 test('native bridge cannot bypass missing admitted native tool or disabled model selection', async () => {
@@ -150,6 +145,7 @@ test('native bridge cannot bypass missing admitted native tool or disabled model
 test('native bridge rejects missing and ambiguous identity output contracts before prepare', async () => {
   const invalid = [
     undefined,
+    { type:'object',required:['kind','subagentId'],properties:{kind:{type:'string',const:'activation'},subagentId:{type:'string'}} },
     { type: 'object', required: ['kind'], properties: { kind: { type: 'string', const: 'activation' }, name: { type: 'string' } } },
     { type: 'object', required: ['kind'], properties: { kind: { type: 'string', const: 'activation' }, subagentId: { type: 'string' } } },
     { type: 'object', required: ['kind', 'subagentId'], properties: { kind: { type: 'string', const: 'activation' }, subagentId: { type: 'number' } } },
@@ -186,7 +182,7 @@ test('native bridge rechecks output identity and tool definition after awaited p
 
 
 
-test('modern native receipts bind a generated name to a verified real Session id and preserve compatibility alias',async()=>{
+test('native receipts bind the requested name to a verified Session id',async()=>{
   const h=makeHost();let closes=0;
   const observe=h.ctx.sessionQuery.observeSession.bind(h.ctx.sessionQuery);
   h.ctx.sessionQuery.observeSession=async(...args)=>{const source=await observe(...args);return {...source,[Symbol.dispose](){closes++;}};};
@@ -194,12 +190,12 @@ test('modern native receipts bind a generated name to a verified real Session id
   const service=new RouterService(h.ctx,h.config);await service[init]();
   const value=await h.definitions.get('routed_subagent').definition.execute(request,h.exec);
   assert.match(value.name,/^router-[a-f0-9]{24}$/);assert.equal(value.name,h.ctx.lastInput.arguments.name);
-  assert.notEqual(value.name,'child');assert.equal(value.childId,'child');assert.equal(value.subagentId,'child');
+  assert.notEqual(value.name,'child');assert.equal(value.childId,'child');assert.equal(Object.hasOwn(value,'subagentId'),false);
   assert.equal(service.runtime.journal.load().find(row=>row.status==='accepted').childId,'child');
   assert.deepEqual(h.ctx.stages,['prepare','dispatch','complete']);assert.equal(closes,3);
 });
 
-test('modern receipt rejects substituted, absent, malformed, duplicate and preexisting catalog identities without replay',async()=>{
+test('native receipt rejects substituted, absent, malformed, duplicate and preexisting catalog identities without replay',async()=>{
   for(const scenario of ['other-name','missing-name','lead','path','missing-row','duplicate','old-id','old-name','bad-id','self','cross-parent','wrong-header-id','wrong-origin','missing-child','missing-post-catalog']){
     const h=makeHost();
     if(scenario==='old-id')h.ctx.catalog.push({id:'child',name:'existing'});
@@ -243,11 +239,11 @@ test('modern receipt rejects substituted, absent, malformed, duplicate and preex
   }
 });
 
-test('forged subagentId in a modern native value is ignored in favor of catalog and owned Session evidence',async()=>{
+test('forged subagentId in a native value is ignored in favor of catalog and owned Session evidence',async()=>{
   const h=makeHost(),native=h.ctx.nativeBody;h.ctx.nativeBody=async args=>({...await native(args),subagentId:'forged-id',childId:'forged-too'});
   const service=new RouterService(h.ctx,h.config);await service[init]();
   const result=await h.definitions.get('routed_subagent').definition.execute(request,h.exec);
-  assert.equal(result.childId,'child');assert.equal(result.subagentId,'child');
+  assert.equal(result.childId,'child');assert.equal(Object.hasOwn(result,'subagentId'),false);
   assert.equal(service.runtime.journal.load().at(-1).childId,'child');
 });
 
@@ -271,8 +267,18 @@ test('native preparation cannot replace the generated child name and still compl
   assert.deepEqual(h.ctx.stages,['prepare','complete']);assert.deepEqual(service.runtime.journal.load().map(row=>row.status),['intent','rejected']);
 });
 
-test('parallel modern starts use distinct bound names and audit only their own real Session identities',async()=>{
-  const h=makeHost();let number=0;h.config.policy.limits={maxActivePerModel:4};
+test('native preparation cannot replace the selected provider, model or effort',async()=>{
+  for(const key of ['provider','model','reasoning_effort']){
+    const h=makeHost();h.ctx.beforePrepared=async input=>{input.arguments[key]='substituted';};
+    const service=new RouterService(h.ctx,h.config);await service[init]();
+    await assert.rejects(h.definitions.get('routed_subagent').definition.execute(request,h.exec),{code:'NATIVE_ROUTE_CHANGED',definitelyNotStarted:true});
+    assert.deepEqual(h.ctx.stages,['prepare','complete']);assert.equal(h.ctx.catalog.length,0);
+    assert.equal(service.runtime.journal.load().at(-1).status,'rejected');assert.equal(service.runtime.ledger.state(h.parent.id).paused,false);
+  }
+});
+
+test('parallel starts use distinct bound names and audit only their own real Session identities',async()=>{
+  const h=makeHost();let number=0;h.config.ui.limits={maxActivePerModel:4};
   h.ctx.nativeBody=async args=>{const id='parallel-'+ ++number;h.ctx.catalog.push({id,name:args.name});h.sessions.set(id,{id,header:{origin:'subagent',parentSession:h.parent.id}});await Promise.resolve();return {kind:'activation',name:args.name};};
   const service=new RouterService(h.ctx,h.config);await service[init]();const tool=h.definitions.get('routed_subagent').definition;
   const values=await Promise.all([tool.execute(request,{...h.exec,callId:'one'}),tool.execute(request,{...h.exec,callId:'two'})]);
@@ -305,36 +311,27 @@ test('guard denial still completes and proves no dispatch; post-dispatch errors 
 
 test('disabled plugin hides delegation tools and opens no journal; status remains read-only', async () => {
   const h = makeHost();
-  const disabled = new RouterService(h.ctx, { policy: { enabled: false } }); await disabled[init]();
+  const disabled = new RouterService(h.ctx, { ui: { schemaVersion:3, enabled:false, candidates:[] } }); await disabled[init]();
   assert.equal(h.definitions.size, 4);
   assert.equal(h.definitions.get('routed_subagent').options.when({agent:h.parent}),false);
   assert.equal(h.definitions.get('router_status').options.when({agent:h.parent}),true);
   assert.equal(disabled.runtime,undefined);
   for(const dispose of h.effects)dispose();
-  assert.throws(() => new RouterService(h.ctx, { policy: h.config.policy }), { code: 'AUDIT_PATH' });
+  assert.throws(() => new RouterService(h.ctx, { ui: h.config.ui }), { code: 'AUDIT_PATH' });
   assert.throws(() => new RouterService(h.ctx, { ...h.config, auditFile: 'relative.jsonl' }), { code: 'AUDIT_PATH' });
 });
 
-test('unsupported sources quarantine routing while status and historical recovery remain available',async()=>{
-  for(const source of ['ui','policy'])for(const [schemaVersion,teamEnabled] of [[1,true],[2,true],[1,false]]){
-    const h=makeHost(),original={...h.config.policy,schemaVersion,teams:{enabled:teamEnabled}};
-    const config={[source]:original,auditFile:h.config.auditFile},before=structuredClone(config);
-    const base={decisionId:'historical-team',parentId:h.parent.id,policyRevision:'old',modelId:JSON.stringify(['p','m']),provider:'p',model:'m',effort:'low',kind:'teammate'};
-    await writeFile(config.auditFile,[{...base,status:'intent',time:1},{...base,status:'accepted',time:2,childId:'old-child'}].map(JSON.stringify).join('\n')+'\n');
-    h.ctx.sessionQuery.observeSession=async id=>({source:'prepared',header:{id,origin:'subagent',parentSession:h.parent.id},inheritedEventCount:0,events:[{seq:1,type:'turn/start',data:{turn:1}},{seq:2,type:'turn/end',data:{turn:1,reason:{kind:'completed'}}}],[Symbol.dispose](){}});
-    const service=new RouterService(h.ctx,config);await service[init]();
-    assert.deepEqual(config,before);assert.deepEqual(service.policy.presets,[]);assert.equal(service.runtime,undefined);
-    const statusTool=h.definitions.get('router_status'),reconcile=h.definitions.get('router_reconcile');
-    assert.equal(statusTool.options.when({agent:h.parent}),true);assert.equal(reconcile.options.when({agent:h.parent}),true);
-    const state=await statusTool.definition.execute({},h.exec);
-    assert.equal(state.enabled,false);assert.equal(state.configurationIssue.code,teamEnabled?'TEAM_ROUTING_REMOVED':'LEGACY_CONFIGURATION');assert.deepEqual(Object.keys(state.configurationIssue).sort(),['code','message']);assert.equal(state.migrationRequired,schemaVersion===1);
-    assert.deepEqual(state.decisions,[]);assert.equal(service.manager.journal,undefined);
-    assert.equal(h.definitions.has('routed_spawn_teammate'),false);assert.equal(typeof service.claimTeamPermit,'undefined');
-    assert.equal(h.definitions.get('routed_subagent').options.when({agent:h.parent}),false);
-    await assert.rejects(h.definitions.get('routed_subagent').definition.execute(request,h.exec),{code:'ROUTER_DISABLED'});
-    const result=await reconcile.definition.execute({child_id:'old-child'},h.exec);assert.equal(result.reconciled,true);
-    const [card]=(await statusTool.definition.execute({},h.exec)).decisions;assert.equal(card.kind,'teammate');assert.equal(card.settled,true);
-    assert.deepEqual(h.ctx.stages,[]);assert.deepEqual(config,before);
+test('unsupported configuration shapes reject before initialization',async()=>{
+  for(const configuration of [
+    {policy:{schemaVersion:3,enabled:false,candidates:[]}},
+    {ui:{schemaVersion:1,enabled:false}},
+    {ui:{schemaVersion:0,enabled:false}},
+    {ui:{schemaVersion:3,enabled:false,candidates:[],teams:{enabled:false}}}
+  ]){
+    const h=makeHost(),before=structuredClone(configuration);
+    assert.throws(()=>new RouterService(h.ctx,configuration),{code:'INVALID_CONFIG'});
+    assert.deepEqual(configuration,before);assert.deepEqual(h.ctx.stages,[]);
+    await assert.rejects(access(h.config.auditFile),{code:'ENOENT'});
   }
 });
 
@@ -363,10 +360,10 @@ test('plugin registration is root-only, preserves deep-frozen parent, and uses n
 
 test('structured UI configuration mounts the same guarded router and preserves parent options', async () => {
   const h=makeHost();
-  const service=new RouterService(h.ctx,{ui:{schemaVersion:2,enabled:true,presets:h.config.policy.presets,defaultPreset:'primary'},auditFile:h.config.auditFile});
+  const service=new RouterService(h.ctx,{ui:{schemaVersion:3,enabled:true,candidates:h.config.ui.candidates,defaultCandidateId:'primary'},auditFile:h.config.auditFile});
   await service[init]();
   assert.equal(service.policy.enabled,true);
-  assert.equal(service.policy.defaultPreset,'primary');
+  assert.equal(service.policy.defaultCandidateId,'primary');
   const status=await h.definitions.get('router_status').definition.execute({},h.exec);
   assert.deepEqual(status.parentRoute,{provider:'p',model:'m',effort:null});
   assert.equal(Object.hasOwn(status,'teamRoutingAvailable'),false);
@@ -376,18 +373,18 @@ test('structured UI configuration mounts the same guarded router and preserves p
 
 test('volatile UI values remain editable while disabled and use pre-save validation before committing',async()=>{
  const h=makeHost();h.ctx.fiber={};
- let ui={schemaVersion:2,enabled:false,presets:h.config.policy.presets,defaultPreset:'primary'};
+ let ui={schemaVersion:3,enabled:false,candidates:h.config.ui.candidates,defaultCandidateId:'primary'};
  const ref={__volatile:true,get:()=>ui};
  const service=new RouterService(h.ctx,{ui:ref,auditFile:h.config.auditFile});await service[init]();
  assert.equal(service.runtime,undefined);
  const edit=next=>{const value=h.handlers.get('internal/config')(h.ctx.fiber,()=>({ui:next,auditFile:h.config.auditFile}));ui=value.ui;};
- assert.throws(()=>edit({schemaVersion:2,enabled:true,presets:[]}),{code:'INVALID_CONFIG'});
+ assert.throws(()=>edit({schemaVersion:3,enabled:true,candidates:[]}),{code:'INVALID_CONFIG'});
  assert.equal(ui.enabled,false);assert.equal(service.runtime,undefined);
  edit({...ui,enabled:true});
  assert.equal(h.definitions.get('routed_subagent').options.when({agent:h.parent}),true);
  const result=await h.definitions.get('routed_subagent').definition.execute(request,h.exec);
  assert.equal(result.selected.model,'m');
- assert.throws(()=>edit({...ui,defaultPreset:'primary',limits:{maxPendingStarts:1}}),{code:'CONFIG_BUSY'});
+ assert.throws(()=>edit({...ui,defaultCandidateId:'primary',limits:{maxPendingStarts:1}}),{code:'CONFIG_BUSY'});
  assert.equal(ui.limits,undefined);
  edit({...ui,enabled:false});
  assert.equal(h.definitions.get('routed_subagent').options.when({agent:h.parent}),false);
@@ -399,7 +396,7 @@ test('volatile UI values remain editable while disabled and use pre-save validat
 
 test('default audit journal is profile-local and is not acquired merely by showing the UI',async()=>{
  const h=makeHost();h.services.set('profileContext',{dir:directory});
- const service=new RouterService(h.ctx,{ui:{enabled:false}});await service[init]();
+ const service=new RouterService(h.ctx,{ui:{schemaVersion:3,enabled:false,candidates:[]}});await service[init]();
  assert.equal(service.auditFile,path.join(directory,'delegation-router','audit.jsonl'));
  assert.equal(service.runtime,undefined);
  for(const dispose of h.effects)dispose();
@@ -424,17 +421,17 @@ test('router status reads owned live child request headers without fallback or c
 
 test('discovery reads one current snapshot and returns detached authorized rows with zero preparation effects',async()=>{
   const h=makeHost({extraModels:[{...model,id:'forbidden',provider:'other',model:'other'}]});
-  h.config.policy.enabled=false;const service=new RouterService(h.ctx,h.config);await service[init]();h.config.policy.enabled=true;
+  h.config.ui.enabled=false;const service=new RouterService(h.ctx,h.config);await service[init]();h.config.ui.enabled=true;
   h.ctx.llm.resolveModelInfo=()=>assert.fail('discovery must not resolve metadata');h.ctx.llm.resolveCallConfig=()=>assert.fail('discovery must not preflight');
   service.manager.createJournal=()=>assert.fail('discovery must not open a journal');service.manager.ensure=()=>assert.fail('discovery must not acquire a runtime');
   const configuration=service.configuration.bind(service);let reads=0;service.configuration=()=>{reads++;return configuration();};
   const registration=h.definitions.get('delegation_routes'),list=()=>registration.definition.execute({},h.exec);
   assert.deepEqual(registration.definition.parameters.properties,{});
-  const value=await list();assert.equal(reads,1);assert.equal(value.defaultPreset,'primary');
-  assert.deepEqual(value.presets,[model]);assert.match(value.eligibility,/No model has been preflighted/);
-  for(const key of ['selected','presetId','routingReason','evidenceStage','catalog'])assert.equal(Object.hasOwn(value,key),false);
-  value.presets[0].name='changed';value.presets.push({id:'fake'});
-  assert.deepEqual((await list()).presets,[model]);assert.equal(h.config.policy.presets[0].name,'Fast');
+  const value=await list();assert.equal(reads,1);assert.equal(value.defaultCandidateId,'primary');
+  assert.deepEqual(value.candidates,[model]);assert.match(value.eligibility,/No model has been preflighted/);
+  for(const key of ['selected','candidateId','routingReason','evidenceStage','catalog'])assert.equal(Object.hasOwn(value,key),false);
+  assert.throws(()=>{value.candidates[0].name='changed';},TypeError);value.candidates.push({id:'fake'});
+  assert.deepEqual((await list()).candidates,[model]);assert.equal(h.config.ui.candidates[0].name,'Fast');
   assert.equal(service.runtime,undefined);assert.equal(service.manager.journal,undefined);assert.equal(service.manager.inFlight,0);assert.equal(service.manager.calls.size,0);assert.equal(service.manager.latest.size,0);
   assert.equal(h.ctx.metadataLookups,0);assert.deepEqual(h.ctx.preflights,[]);assert.deepEqual(h.ctx.stages,[]);
   await assert.rejects(access(h.config.auditFile+'.lock'),{code:'ENOENT'});
@@ -442,21 +439,21 @@ test('discovery reads one current snapshot and returns detached authorized rows 
 
 test('unavailable catalog and unsupported default effort do not prevent listing but still refuse creation',async()=>{
   for(const unavailable of [false,true]){
-    const h=makeHost();h.config.policy.presets=[{...model,effort:'unsupported'}];
+    const h=makeHost();h.config.ui.candidates=[{...model,effort:'unsupported'}];
     const service=new RouterService(h.ctx,h.config);await service[init]();
     if(unavailable)h.ctx.llm.resolveModelInfo=async()=>undefined;
     const value=await h.definitions.get('delegation_routes').definition.execute({},h.exec);
-    assert.equal(value.presets[0].effort,'unsupported');assert.equal(value.defaultPreset,'primary');assert.equal(h.ctx.metadataLookups,0);
+    assert.equal(value.candidates[0].effort,'unsupported');assert.equal(value.defaultCandidateId,'primary');assert.equal(h.ctx.metadataLookups,0);
     await assert.rejects(h.definitions.get('routed_subagent').definition.execute({...request,policy_revision:value.policy_revision},h.exec),{code:'NO_ROUTE'});
     assert.deepEqual(h.ctx.stages,[]);assert.deepEqual(h.ctx.preflights,[]);assert.deepEqual(service.runtime.journal.load(),[]);
   }
 });
 
 test('cold discovery revision is the creation revision and stale listing cannot create a child',async()=>{
-  const h=makeHost();h.config.policy.enabled=false;const service=new RouterService(h.ctx,h.config);await service[init]();h.config.policy.enabled=true;
+  const h=makeHost();h.config.ui.enabled=false;const service=new RouterService(h.ctx,h.config);await service[init]();h.config.ui.enabled=true;
   const list=()=>h.definitions.get('delegation_routes').definition.execute({},h.exec);
   const first=await list();assert.equal(service.runtime,undefined);assert.equal(first.policy_revision,service.manager.status().configuredRevision);
-  h.config.policy.presets=[{...model,name:'Updated'}];const latest=await list();assert.notEqual(latest.policy_revision,first.policy_revision);assert.equal(service.runtime,undefined);
+  h.config.ui.candidates=[{...model,name:'Updated'}];const latest=await list();assert.notEqual(latest.policy_revision,first.policy_revision);assert.equal(service.runtime,undefined);
   await assert.rejects(h.definitions.get('routed_subagent').definition.execute({...request,policy_revision:first.policy_revision},h.exec),{code:'STALE_POLICY'});
   assert.equal(service.runtime.revision,latest.policy_revision);assert.equal(h.ctx.metadataLookups,0);assert.deepEqual(h.ctx.stages,[]);
   const result=await h.definitions.get('routed_subagent').definition.execute({...request,policy_revision:latest.policy_revision},{...h.exec,callId:'fresh'});
@@ -508,22 +505,22 @@ test('status cards distinguish acceptance, observed request, and end even after 
   const h=makeHost();const service=new RouterService(h.ctx,h.config);await service[init]();
   const status=args=>h.definitions.get('router_status').definition.execute(args??{},h.exec);
   assert.deepEqual((await status()).decisions,[]);
-  await h.definitions.get('routed_subagent').definition.execute({...request,preset_id:'primary'},h.exec);
+  await h.definitions.get('routed_subagent').definition.execute({...request,candidate_id:'primary'},h.exec);
   let card=(await status({limit:1})).decisions[0];assert.equal(card.status,'accepted');assert.equal(card.accepted,true);assert.equal(card.observed,null);assert.equal(card.settled,false);
   h.sessions.get('child').requestHeader=()=>({config:{provider:'p',model:'m',reasoningEffort:'low',apiKey:'DO_NOT_EXPOSE'}});
   card=(await status()).decisions[0];assert.equal(card.status,'observed');assert.deepEqual(card.observed,{provider:'p',model:'m',effort:'low'});
-  h.config.policy.enabled=false;await h.handlers.get('subagent/end')({id:'child',runId:'epoch',local:true});await h.handlers.get('subagent/end')({id:'child',runId:'epoch',local:true});
+  h.config.ui.enabled=false;await h.handlers.get('subagent/end')({id:'child',runId:'epoch',local:true});await h.handlers.get('subagent/end')({id:'child',runId:'epoch',local:true});
   card=(await status()).decisions[0];assert.equal(card.status,'settled');assert.equal(card.settled,true);
   const records=service.runtime.journal.load();assert.equal(records.filter(row=>row.status==='settled').length,1);
   assert.doesNotMatch(JSON.stringify(await status()),/DO_NOT_EXPOSE|Independent useful work|Do useful work/);
   for(const limit of [0,101,1.2,'1'])await assert.rejects(status({limit}),{code:'INVALID_REQUEST'});
 });
 
-test('discovery rejects old arguments, nonlive roots and cancellation without preparing a route',async()=>{
+test('discovery rejects unexpected arguments, nonlive roots and cancellation without preparing a route',async()=>{
   const h=makeHost(),service=new RouterService(h.ctx,h.config);await service[init]();
   const definition=h.definitions.get('delegation_routes').definition;
   let invoked=0;const getter=Object.defineProperty({},'prompt',{enumerable:true,get(){invoked++;return 'unsafe';}});
-  for(const args of [{preset_id:'primary'},{prompt:'task'},{description:'task'},{selection_reason:'old'},{policy_revision:'old'},{lane:'review'},getter,[],null,Object.create({}),{[Symbol('s')]:1}])await assert.rejects(definition.execute(args,h.exec),{code:'INVALID_REQUEST'});
+  for(const args of [{candidate_id:'primary'},{prompt:'task'},{description:'task'},{selection_reason:'old'},{policy_revision:'old'},{lane:'review'},getter,[],null,Object.create({}),{[Symbol('s')]:1}])await assert.rejects(definition.execute(args,h.exec),{code:'INVALID_REQUEST'});
   assert.equal(invoked,0);
   await assert.rejects(definition.execute({},{...h.exec,agent:{...h.parent}}),{code:'HOST_EXECUTION_REQUIRED'});
   for(const header of [{origin:'subagent'},{origin:'interactive',parentSession:'ancestor'}]){
@@ -549,7 +546,7 @@ test('discovery lists only authorized rows even when configured default is unaut
   const h=makeHost({authorized:[{provider:'q',model:'n'}],extraModels:[{...model,id:'allowed',provider:'q',model:'n'}]});
   const service=new RouterService(h.ctx,h.config);await service[init]();
   const value=await h.definitions.get('delegation_routes').definition.execute({},h.exec);
-  assert.equal(value.defaultPreset,'primary');assert.deepEqual(value.presets.map(row=>row.id),['allowed']);assert.equal(h.ctx.metadataLookups,0);
+  assert.equal(value.defaultCandidateId,'primary');assert.deepEqual(value.candidates.map(row=>row.id),['allowed']);assert.equal(h.ctx.metadataLookups,0);
   const missing=makeHost();missing.ctx.sessionProjections.register=async()=>({stateOf:()=>undefined});
   const other=new RouterService(missing.ctx,missing.config);await other[init]();
   await assert.rejects(missing.definitions.get('delegation_routes').definition.execute({},missing.exec),{code:'AUTHORIZATION_UNAVAILABLE'});
@@ -558,12 +555,12 @@ test('discovery lists only authorized rows even when configured default is unaut
 test('plugin mounts optional bounded root guidance without acquiring runtime on disabled configuration',async()=>{
   const h=makeHost(),sections=[];let removed=0;
   h.services.set('systemPrompt',{section:value=>{sections.push(value);return ()=>removed++;}});
-  h.config.policy.enabled=false;
+  h.config.ui.enabled=false;
   const service=new RouterService(h.ctx,h.config);await service[init]();
   assert.equal(sections.length,1);assert.equal(sections[0].text({agent:h.parent}),'');assert.equal(service.runtime,undefined);
   const status=await h.definitions.get('router_status').definition.execute({},h.exec);assert.deepEqual(status.decisions,[]);assert.equal(service.manager.journal,undefined);
-  h.config.policy.enabled=true;assert.match(sections[0].text({agent:h.parent}),/DELEGATION_ROUTER/);assert.equal(service.runtime,undefined);
-  assert.equal(sections[0].text({agent:{...h.parent}}),'');h.config.policy.enabled=false;assert.equal(sections[0].text({agent:h.parent}),'');
+  h.config.ui.enabled=true;assert.match(sections[0].text({agent:h.parent}),/DELEGATION_ROUTER/);assert.equal(service.runtime,undefined);
+  assert.equal(sections[0].text({agent:{...h.parent}}),'');h.config.ui.enabled=false;assert.equal(sections[0].text({agent:h.parent}),'');
   for(const dispose of h.effects)dispose();assert.equal(removed,1);
 });
 
@@ -579,7 +576,7 @@ test('disable or cancellation while native prepare awaits cannot dispatch and st
   for(const action of ['disable','cancel']){
     const h=makeHost();const service=new RouterService(h.ctx,h.config);await service[init]();
     const controller=new AbortController();h.exec.signal=controller.signal;
-    h.ctx.beforePrepared=async()=>{await Promise.resolve();if(action==='disable')h.config.policy.enabled=false;else controller.abort();};
+    h.ctx.beforePrepared=async()=>{await Promise.resolve();if(action==='disable')h.config.ui.enabled=false;else controller.abort();};
     await assert.rejects(h.definitions.get('routed_subagent').definition.execute(request,h.exec),error=>error.definitelyNotStarted===true);
     assert.deepEqual(h.ctx.stages,['prepare','complete']);assert.deepEqual(service.runtime.journal.load().map(row=>row.status),['intent','rejected']);
   }
@@ -588,7 +585,7 @@ test('disable or cancellation while native prepare awaits cannot dispatch and st
 test('fence rejection preserves primary cause and rejected audit despite cleanup or postprocessing failures',async()=>{
   for(const stage of ['complete','defer','conclude','log']){
     const h=makeHost();const service=new RouterService(h.ctx,h.config);await service[init]();
-    h.ctx.beforePrepared=async()=>{await Promise.resolve();h.config.policy.enabled=false;};
+    h.ctx.beforePrepared=async()=>{await Promise.resolve();h.config.ui.enabled=false;};
     const fail=()=>{throw Error(stage+' failed');};
     if(stage==='complete')h.ctx.completeHook=fail;
     if(stage==='defer'){h.ctx.mapResult=result=>({...result,additionalContexts:[{}]});h.exec.deferContext=fail;}
@@ -619,9 +616,9 @@ test('bridge rejects asynchronous admission hook instead of silently dispatching
   assert.deepEqual(steps,['prepare','complete']);
 });
 
-test('null preset cannot silently inherit parent effort on the same native route',async()=>{
+test('null candidate cannot silently inherit parent effort on the same native route',async()=>{
  for(const when of ['initial','after-prepare']){
-  const h=makeHost();h.config.policy.presets=h.config.policy.presets.map(p=>({...p,effort:null}));
+  const h=makeHost();h.config.ui.candidates=h.config.ui.candidates.map(p=>({...p,effort:null}));
   h.ctx.llm.resolveModelInfo=async()=>({inputModalities:['text'],contextWindow:200000});
   const inherited=()=>({config:{provider:'p',model:'m',reasoningEffort:'high'}});
   if(when==='initial')h.parent.session.requestHeader=inherited;

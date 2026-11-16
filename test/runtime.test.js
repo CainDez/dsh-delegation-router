@@ -8,13 +8,13 @@ function deepFreeze(value) { if (value && typeof value === 'object') { for (cons
 const makeParent = () => deepFreeze({ id: 'root-session', provider: 'parent-provider', model: 'parent-model', reasoningEffort: 'parent-effort', session: { header: { origin: 'root' }, agentOptions: { provider: 'parent-provider', model: 'parent-model', reasoningEffort: 'parent-effort' } } });
 const request = extra => ({ prompt: 'Implement bounded child work', description: 'child work', ...extra });
 const metadata = { inputModalities: ['text', 'image'], context: { contextWindow: 100000 }, reasoning: { efforts: [{ id: 'low' }, { id: 'high' }], defaultEffort: 'low' } };
-const preset = (id, extra = {}) => ({ id, name:'Preset '+id, provider: 'provider-' + id, model: 'model-' + id, effort:'low', ...extra });
+const candidate = (id, extra = {}) => ({ id, name:'Candidate '+id, provider: 'provider-' + id, model: 'model-' + id, effort:'low', ...extra });
 const auth = ids => ids.map(id => ({ provider: 'provider-' + id, model: 'model-' + id }));
 function fixture(overrides = {}) {
   const calls = [], parent = makeParent(), journal = overrides.journal ?? new MemoryJournal();
   const { config: configExtra, ...dependencies } = overrides;
   const router = new SubagentRouter({
-    config: { schemaVersion: 2, enabled: true, presets: [preset('a'), preset('b')], defaultPreset:'a', ...configExtra },
+    config: { schemaVersion: 3, enabled: true, candidates: [candidate('a'), candidate('b')], defaultCandidateId:'a', ...configExtra },
     resolveModel: async () => structuredClone(metadata), readAuthorization: () => auth(['a', 'b']),
     preflight: async () => {}, invokeNative: async args => { calls.push(args); return { kind: 'activation', childId: 'child-' + calls.length }; },
     journal, estimateContext: () => 100,
@@ -25,7 +25,7 @@ function fixture(overrides = {}) {
 const exec = (callId, signal) => ({ callId, signal });
 test('runtime only selects child options and preserves a deeply frozen parent Agent', async () => {
   const f = fixture(), before = structuredClone(f.parent);
-  const result = await f.router.run(f.parent, request({ preset_id: 'b' }), exec('first'));
+  const result = await f.router.run(f.parent, request({ candidate_id: 'b' }), exec('first'));
   assert.equal(result.childId, 'child-1');
   assert.deepEqual(result.selected, { provider: 'provider-b', model: 'model-b', effort: 'low' });
   assert.deepEqual(f.calls[0], { prompt: 'Implement bounded child work', description: 'child work', provider: 'provider-b', model: 'model-b', reasoning_effort: 'low' });
@@ -50,9 +50,9 @@ test('concurrent starts reserve model capacity before native publication', async
 test('pending quota is shared across candidate models', async () => {
   const entered = deferred(), release = deferred();
   const f = fixture({ config: { limits: { maxPendingStarts: 1 } }, invokeNative: async () => { entered.resolve(); await release.promise; return { kind: 'activation', childId: 'child' }; } });
-  const first = f.router.run(f.parent, request({ preset_id: 'a' }), exec('one'));
+  const first = f.router.run(f.parent, request({ candidate_id: 'a' }), exec('one'));
   await entered.promise;
-  await assert.rejects(f.router.run(f.parent, request({ preset_id: 'b' }), exec('two')), { code: 'PENDING_LIMIT' });
+  await assert.rejects(f.router.run(f.parent, request({ candidate_id: 'b' }), exec('two')), { code: 'PENDING_LIMIT' });
   release.resolve(); await first;
 });
 
@@ -66,9 +66,9 @@ test('creation count survives settlement and cannot be reset by child completion
 
 test('host authorization is intersected with configured routes', async () => {
   const f = fixture({ readAuthorization: () => auth(['b']) });
-  await assert.rejects(f.router.run(f.parent, request({ preset_id: 'a' }), exec('denied-explicit')), { code: 'NO_ROUTE' });
+  await assert.rejects(f.router.run(f.parent, request({ candidate_id: 'a' }), exec('denied-explicit')), { code: 'NO_ROUTE' });
   await assert.rejects(f.router.run(f.parent, request(), exec('denied-default')), { code: 'NO_ROUTE' });
-  const result = await f.router.run(f.parent, request({ preset_id: 'b' }), exec('one'));
+  const result = await f.router.run(f.parent, request({ candidate_id: 'b' }), exec('one'));
   assert.equal(result.selected.model, 'model-b');
   const denied = fixture({ readAuthorization: () => [] });
   await assert.rejects(denied.router.run(denied.parent, request(), exec('one')), { code: 'NO_ROUTE' });
@@ -78,7 +78,7 @@ test('host authorization is intersected with configured routes', async () => {
 test('revocation during asynchronous preflight cannot publish the previously selected route', async () => {
   let allowed = auth(['a', 'b']);
   const f = fixture({ readAuthorization: () => allowed, preflight: async () => { allowed = auth(['b']); } });
-  await assert.rejects(f.router.run(f.parent, request({ preset_id: 'a' }), exec('revoked')));
+  await assert.rejects(f.router.run(f.parent, request({ candidate_id: 'a' }), exec('revoked')));
   assert.equal(f.calls.length, 0);
 });
 
@@ -229,8 +229,8 @@ test('settlement audit failure pauses internally, snapshots unknown, and duplica
 test('concurrent end-before-receipt events remain isolated by exact parent and child identity', async () => {
   const a=deferred(),b=deferred(),entered=deferred();let starts=0;
   const f=fixture({invokeNative:async()=>{const index=++starts;if(index===2)entered.resolve();await (index===1?a.promise:b.promise);return {kind:'activation',childId:'c'+index};}});
-  const one=f.router.run(f.parent,request({preset_id:'a'}),exec('one'));
-  const two=f.router.run(f.parent,request({preset_id:'b'}),exec('two'));
+  const one=f.router.run(f.parent,request({candidate_id:'a'}),exec('one'));
+  const two=f.router.run(f.parent,request({candidate_id:'b'}),exec('two'));
   await entered.promise;
   f.router.settle('foreign','c1');f.router.settle(f.parent.id,'c2');f.router.settle(f.parent.id,'c1');
   b.resolve();await two;a.resolve();await one;
@@ -255,52 +255,52 @@ test('native beforeDispatch fence also checks cancellation and live authorizatio
       try { beforeDispatch(); } catch(error) { error.definitelyNotStarted=true;throw error; }
       dispatches++;return {kind:'activation',childId:'must-not-start'};
     }});
-    const running=f.router.run(f.parent,request({preset_id:'a'}),exec('fence-'+change,controller.signal));await entered.promise;
+    const running=f.router.run(f.parent,request({candidate_id:'a'}),exec('fence-'+change,controller.signal));await entered.promise;
     if(change==='cancel')controller.abort();else allowed=auth(['b']);release.resolve();
     await assert.rejects(running,{code:change==='cancel'?'CANCELLED':'STALE_AUTHORIZATION',definitelyNotStarted:true});
     assert.equal(dispatches,0);assert.deepEqual(f.journal.load().map(record=>record.status),['intent','rejected']);
   }
 })
 
-test('request contract rejects every old routing field before metadata or native execution',async()=>{
-  for(const field of ['lane','task_type','complexity','model_id','effort','author_child_id','name']) {
+test('request contract rejects unknown fields before metadata or native execution',async()=>{
+  for(const field of ['unexpected','provider','model','effort','name']) {
     let resolutions=0;const f=fixture({resolveModel:async()=>{resolutions++;return metadata;}});
     assert.throws(()=>f.router.run(f.parent,request({[field]:'old'}),exec(field)),{code:'INVALID_REQUEST'});
     assert.equal(resolutions,0);assert.equal(f.calls.length,0);assert.deepEqual(f.journal.load(),[]);
   }
-  assert.throws(()=>normalizeRequest(request({preset_id:''})),{code:'INVALID_REQUEST'});
+  assert.throws(()=>normalizeRequest(request({candidate_id:''})),{code:'INVALID_REQUEST'});
   assert.throws(()=>normalizeRequest(request({selection_reason:'x'.repeat(1001)})),{code:'INVALID_REQUEST'});
   assert.throws(()=>normalizeRequest(request({name:'worker'})),{code:'INVALID_REQUEST'});
   assert.equal(normalizeRequest(request({cwd:'elsewhere'})).cwd,'elsewhere');
 });
-test('only the exact selected preset resolves and advisory reasons never enter native args or audit',async()=>{
+test('only the exact selected candidate resolves and selection metadata never enters native args',async()=>{
   const resolutions=[],f=fixture({resolveModel:async(provider,model)=>{resolutions.push([provider,model]);return metadata;}});
-  const value=await f.router.run(f.parent,request({preset_id:'b',selection_reason:'sensitive explanation'}),exec('chosen'));
-  assert.deepEqual(resolutions,[['provider-b','model-b']]);assert.equal(value.presetId,'b');assert.equal(value.routingReason,'explicit-preset');
-  assert.equal('preset_id' in f.calls[0],false);assert.equal('selection_reason' in f.calls[0],false);
+  const value=await f.router.run(f.parent,request({candidate_id:'b'}),exec('chosen'));
+  assert.deepEqual(resolutions,[['provider-b','model-b']]);assert.equal(value.candidateId,'b');assert.equal(value.routingReason,'explicit-candidate');
+  assert.equal('candidate_id' in f.calls[0],false);assert.equal('selection_reason' in f.calls[0],false);
   assert.equal(JSON.stringify(f.journal.load()).includes('sensitive explanation'),false);
-  assert.ok(f.journal.load().every(row=>row.presetId==='b'&&row.modelId===JSON.stringify(['provider-b','model-b'])));
+  assert.ok(f.journal.load().every(row=>row.candidateId==='b'&&row.modelId===JSON.stringify(['provider-b','model-b'])));
   const unknown=fixture({resolveModel:async()=>{throw Error('must not resolve');}});
-  await assert.rejects(unknown.router.run(unknown.parent,request({preset_id:'missing'}),exec('missing')),{code:'NO_ROUTE'});
+  await assert.rejects(unknown.router.run(unknown.parent,request({candidate_id:'missing'}),exec('missing')),{code:'NO_ROUTE'});
   assert.equal(unknown.calls.length,0);
 });
-test('selected target metadata failure cannot trigger resolving or creating a different preset',async()=>{
+test('selected target metadata failure cannot trigger resolving or creating a different candidate',async()=>{
   const resolved=[],f=fixture({resolveModel:async(provider)=>{resolved.push(provider);throw Error('catalog offline');}});
-  await assert.rejects(f.router.run(f.parent,request({preset_id:'b'}),exec('offline')),{code:'NO_ROUTE'});
+  await assert.rejects(f.router.run(f.parent,request({candidate_id:'b'}),exec('offline')),{code:'NO_ROUTE'});
   assert.deepEqual(resolved,['provider-b']);assert.equal(f.calls.length,0);assert.deepEqual(f.journal.load(),[]);
 });
-test('same-model presets share active quota regardless of alias or effort',async()=>{
-  const f=fixture({config:{presets:[preset('a'),preset('high',{provider:'provider-a',model:'model-a',effort:'high'})],limits:{maxActivePerModel:1}}});
-  const first=await f.router.run(f.parent,request({preset_id:'a'}),exec('low'));
-  await assert.rejects(f.router.run(f.parent,request({preset_id:'high'}),exec('high-denied')),{code:'MODEL_CAPACITY'});
+test('same-model candidates share active quota regardless of alias or effort',async()=>{
+  const f=fixture({config:{candidates:[candidate('a'),candidate('high',{provider:'provider-a',model:'model-a',effort:'high'})],limits:{maxActivePerModel:1}}});
+  const first=await f.router.run(f.parent,request({candidate_id:'a'}),exec('low'));
+  await assert.rejects(f.router.run(f.parent,request({candidate_id:'high'}),exec('high-denied')),{code:'MODEL_CAPACITY'});
   assert.equal(f.calls.length,1);f.router.settle(f.parent.id,first.childId);
-  const second=await f.router.run(f.parent,request({preset_id:'high'}),exec('high-allowed'));
+  const second=await f.router.run(f.parent,request({candidate_id:'high'}),exec('high-allowed'));
   assert.equal(second.selected.effort,'high');assert.equal(f.calls[1].reasoning_effort,'high');
 });
 test('explicit no-effort metadata omits effort in native calls and preflight',async()=>{
   for(const reasoning of [undefined,{efforts:[]}]) {
     let prepared;const info={inputModalities:['text'],context:{contextWindow:1000},...(reasoning===undefined?{}:{reasoning})};
-    const config={presets:[preset('a',{effort:null})]};
+    const config={candidates:[candidate('a',{effort:null})]};
     const f=fixture({config,resolveModel:async()=>info,preflight:async options=>{prepared=options;}});
     const result=await f.router.run(f.parent,request(),exec('no-effort'));
     assert.equal(result.selected.effort,null);assert.equal('reasoning_effort' in f.calls[0],false);assert.equal('reasoningEffort' in prepared,false);
@@ -309,7 +309,7 @@ test('explicit no-effort metadata omits effort in native calls and preflight',as
 test('unknown or malformed metadata never manufactures no-effort support or invokes getters',async()=>{
   let invoked=0;const getter=Object.defineProperty({...metadata},'reasoning',{enumerable:true,get(){invoked++;return undefined;}});
   for(const info of [undefined,null,{},getter,{...metadata,reasoning:null},{...metadata,reasoning:{}},{...metadata,reasoning:{efforts:['']}},{...metadata,reasoning:{efforts:['default']}}]) {
-    const f=fixture({config:{presets:[preset('a',{effort:null})]},resolveModel:async()=>info});
+    const f=fixture({config:{candidates:[candidate('a',{effort:null})]},resolveModel:async()=>info});
     await assert.rejects(f.router.run(f.parent,request(),exec('no-fabrication')),{code:'NO_ROUTE'});assert.equal(f.calls.length,0);
   }
   assert.equal(invoked,0);assert.equal(normalizeMetadata({}).reasoning,undefined);
@@ -321,31 +321,22 @@ test('authorization loss after intent is rejected without native effects or repl
   await assert.rejects(run,{code:'STALE_AUTHORIZATION'});assert.equal(f.router.run(f.parent,request(),exec('lost-after-intent')),run);
   assert.equal(f.calls.length,0);assert.deepEqual(journal.load().map(row=>row.status),['intent','rejected']);assert.equal(f.router.ledger.state(f.parent.id).paused,false);
 });
-test('historical teammate accepted and unknown decisions still pause recovery and retain quota',async()=>{
-  for(const status of ['accepted','unknown']){
-    const journal=new MemoryJournal(),base={decisionId:'old-team',parentId:'root-session',policyRevision:'old-team-policy',modelId:JSON.stringify(['provider-a','model-a']),provider:'provider-a',model:'model-a',effort:'low',kind:'teammate'};
-    journal.append({...base,status:'intent',time:1});journal.append({...base,status,childId:'old-team-child',time:2});
-    const before=journal.load(),f=fixture({journal,config:{limits:{maxCreationsPerParent:1}}});
-    const [card]=await f.router.decisions(f.parent);assert.equal(card.kind,'teammate');assert.equal(card.status,'unknown');assert.equal(card.unknown,true);assert.equal(card.settled,false);
-    assert.equal(f.router.ledger.state(f.parent.id).paused,true);
-    await assert.rejects(f.router.run(f.parent,request(),exec('not-a-retry')),{code:'RECOVERY_REQUIRED'});
-    assert.equal(f.calls.length,0);assert.deepEqual(journal.load(),before);
-    assert.equal(f.router.ledger.state(f.parent.id).created,1);
-    if(status==='accepted'){
-      f.router.reconcileCompleted(f.parent.id,'old-team-child',{source:'persisted-turn-end',parentId:f.parent.id,childId:'old-team-child',startSeq:1,endSeq:2,reason:'completed'});
-      assert.equal(f.router.ledger.state(f.parent.id).paused,false);assert.equal(f.router.ledger.state(f.parent.id).created,1);
-      await assert.rejects(f.router.run(f.parent,request(),exec('quota-after-recovery')),{code:'CREATION_LIMIT'});
-    }
+test('invalid audit formats are rejected without mutation or attempting a new child',()=>{
+  for(const old of [{kind:'teammate'},{kind:'subagent',candidateId:'a',unexpected:true}]){
+    const journal=new MemoryJournal(),base={decisionId:'old',parentId:'root-session',policyRevision:'old',modelId:'old',provider:'p',model:'m',effort:'low',...old};
+    journal.append({...base,status:'intent'});journal.append({...base,status:'accepted',childId:'old-child'});
+    const before=journal.load();assert.throws(()=>fixture({journal}),{code:'AUDIT_FORMAT_UNSUPPORTED'});assert.deepEqual(journal.load(),before);
   }
 });
-test('read-only decisions preserve old audit identities and never reinterpret unknown recovery as completion',async()=>{
+
+test('read-only decisions preserve recorded candidate identities and never reinterpret recovery as completion',async()=>{
   const empty=fixture();assert.deepEqual(await empty.router.decisions(empty.parent),[]);assert.deepEqual(empty.journal.load(),[]);
-  const journal=new MemoryJournal();const base={decisionId:'legacy',parentId:'root-session',policyRevision:'old',modelId:'old-model-alias',provider:'old-provider',model:'old-model',effort:'high',kind:'subagent'};
+  const journal=new MemoryJournal();const base={decisionId:'recorded',candidateId:'recorded-candidate',parentId:'root-session',policyRevision:'old',modelId:'old-model-alias',provider:'old-provider',model:'old-model',effort:'high',kind:'subagent'};
   journal.append({...base,status:'intent',time:1});journal.append({...base,status:'accepted',childId:'old-child',time:2});
   const before=structuredClone(journal.load());const f=fixture({journal,readChildRoute:async()=>{throw Object.assign(Error('foreign'),{code:'CHILD_SCOPE'});}});
   for(let i=0;i<2;i++){const [card]=await f.router.decisions(f.parent);assert.equal(card.status,'unknown');assert.equal(card.accepted,true);assert.equal(card.settled,false);assert.equal(card.observed,null);}
   assert.deepEqual(journal.load(),before);assert.equal(f.router.ledger.state(f.parent.id).paused,true);
   await assert.rejects(f.router.run(f.parent,request(),exec('paused')),{code:'RECOVERY_REQUIRED'});assert.equal(f.calls.length,0);
-  const off=fixture({config:{enabled:false,presets:[],defaultPreset:undefined}});assert.deepEqual(await off.router.decisions(off.parent),[]);
+  const off=fixture({config:{enabled:false,candidates:[],defaultCandidateId:undefined}});assert.deepEqual(await off.router.decisions(off.parent),[]);
   await assert.rejects(off.router.run(off.parent,request(),exec('off')),{code:'ROUTER_DISABLED'});assert.deepEqual(off.journal.load(),[]);
 });

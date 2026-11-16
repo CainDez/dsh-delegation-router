@@ -1,13 +1,10 @@
+# Dependencies and generated artifacts
 node_modules/
 *.tgz
-pack-receipt.json
 coverage/
-.pack-verify*/
-*.log
-*.jsonl
-*.jsonl.lock
+/candidate-dir/
 
-# Local credentials, profiles and configuration (examples are tracked separately).
+# Local configuration, credentials and audit data
 .env
 .env.*
 !.env.example
@@ -19,19 +16,9 @@ coverage/
 credentials*.json
 secrets*.json
 .dsh/
-
-# Local acceptance logs and installation receipts, not public release manifests.
-LIVE_ACCEPTANCE_*.json
-LIVE_ACCEPTANCE_*.md
-/release-*.json
-/SHRINK_PLAN.md
-/docs/history/
-.host-api-check-*/
-
-# Never bring private originals or backup histories into the public tree.
-*.bundle
-.git.old*/
-.git-backup*/
+*.log
+*.jsonl
+*.jsonl.lock
 backups/
 .private/
-/candidate-dir/
+*.bundle

@@ -30,7 +30,7 @@ const nativeCatalog = () => ({
 });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 function harness(initialUi) {
-  let configuration = { status: 'ready', writable: true, revision: 9, user: {}, value: { ui: copy(initialUi ?? plugin.defaults()) } };
+  let configuration = { status: 'ready', writable: true, revision: 9, user: {}, value: { ui: copy(initialUi ?? configured()) } };
   const subscriptions = new Map(), events = new Map(), formListeners = new Set(), effects = [], slots = [], mutations = [], rpcArgs = [];
   let response = async () => ok(nativeCatalog());
   const ctx = {
@@ -42,7 +42,7 @@ function harness(initialUi) {
       $on(event, fn) { assert.equal(subscriptions.has(event), false); subscriptions.set(event, fn); return () => subscriptions.delete(event); },
       settings: { async mutate(namespace, ops, revision) {
         mutations.push({ namespace, ops: copy(ops), revision });
-        configuration = { ...configuration, revision: revision + 1, user: { ui: copy(ops[1].value) }, value: { ui: copy(ops[1].value) } };
+        configuration = { ...configuration, revision: revision + 1, user: { ui: copy(ops[0].value) }, value: { ui: copy(ops[0].value) } };
         for (const fn of formListeners) fn(); return { ok: true };
       } }
     },
@@ -63,13 +63,13 @@ function harness(initialUi) {
 function flatten(node) {
   if (node === null || node === undefined || node === false) return [];
   if (Array.isArray(node)) return node.flatMap(flatten);
-  if (typeof node === 'string' || typeof node === 'number') return [node];
-  if (typeof node.type === 'function') return flatten(node.type(node.props));
+  if (typeof node !== 'object') return [node];
+  if (node.type === 'function') return flatten(node.type(node.props));
   return [node, ...flatten(node.props?.children)];
 }
 const page = (editor, catalog) => flatten(plugin.RouterPage({ editor, catalog, t, view: 'page' }));
 const field = (nodes, type, label) => nodes.find(node => node?.type === type && node.props['aria-label'] === t(label));
-function configured() { return { ...copy(plugin.defaults()), presets: [{ id: 'keep-alias', name: 'Keep name', provider: 'alpha', model: 'actual-model', effort: 'thorough', description: 'Keep description', unknownField: 'preserve' }], defaultPreset: 'keep-alias' }; }
+function configured() { return { ...copy(plugin.emptyDraft()), candidates: [{ id: 'keep-alias', name: 'Keep name', provider: 'alpha', model: 'actual-model', effort: 'thorough', description: 'Keep description' }], defaultCandidateId: 'keep-alias' }; }
 
 test('normalizer uses current native efforts/id/name and whitelists display fields only', () => {
   const response = nativeCatalog(), before = copy(response), normalized = copy(normalizeCatalog(response));
@@ -82,7 +82,7 @@ test('normalizer uses current native efforts/id/name and whitelists display fiel
   assert.doesNotMatch(JSON.stringify(normalized), /credential|never-copy|description|private-default|routableProviders|badge/);
 });
 
-test('malformed and legacy-only reasoning responses fail closed, not as a fresh empty catalog', async () => {
+test('malformed and incomplete reasoning responses fail closed, not as a fresh empty catalog', async () => {
   for (const value of [null, { groups: [] }, { groups: [{ id: 'p', models: [{ id: 'm', reasoning: { levels: [{ effort: 'low', label: 'Low' }] } }] }], failures: [] },
     { groups: [{ id: 'p', models: [{ id: 'm' }, { id: 'm' }] }], failures: [] },
     { groups: [], failures: [{ provider: 'old-shape', error: 'not-current-contract' }] }]) {
@@ -164,7 +164,7 @@ test('partial failures preserve exact id/name/message and successful groups rema
   h.setResponse(async () => ok(value)); const catalog = new ModelCatalog(h.ctx), editor = new RouterEditor(h.ctx, t); await catalog.load();
   assert.deepEqual(copy(catalog.getSnapshot().failures), [{ id: 'failed', name: 'Failed Provider', message: 'original partial diagnostic' }]);
   assert.equal(catalog.select(editor, 0, key('alpha', 'actual-model')), true);
-  editor.edit(next => Object.assign(next.presets[0], { provider: 'failed', model: 'retained-model', effort: 'old' }));
+  editor.edit(next => Object.assign(next.candidates[0], { provider: 'failed', model: 'retained-model', effort: 'old' }));
   const before = copy(editor.getSnapshot().draft); const nodes = page(editor, catalog);
   assert.ok(nodes.includes(t('catalogUnverified'))); assert.equal(nodes.includes(t('catalogMissing')), false);
   assert.ok(nodes.includes('Failed Provider (failed): original partial diagnostic')); assert.deepEqual(copy(editor.getSnapshot().draft), before);
@@ -181,7 +181,24 @@ test('catalog load, refresh, missing model and effort changes never rewrite save
   editor.dispose(); catalog.dispose();
 });
 
-test('only explicit model selection updates pair and exact effort, preserving preset metadata and unknown fields', async () => {
+test('unknown persistent candidate fields stay read-only: original viewable, no selection or save overwrite', async () => {
+  const ui = configured(); ui.candidates[0].unknownField = 'preserve';
+  const h = harness(ui), catalog = new ModelCatalog(h.ctx), editor = new RouterEditor(h.ctx, t); await catalog.load();
+  const state = editor.getSnapshot();
+  assert.equal(state.invalidSource, true);
+  assert.deepEqual(copy(state.invalidOriginal), ui);
+  const nodes = page(editor, catalog);
+  assert.ok(nodes.includes(t('invalidSource')));
+  assert.ok(nodes.includes(JSON.stringify(ui, null, 2)));
+  assert.equal(catalog.select(editor, 0, key('alpha', 'actual-model')), false);
+  assert.equal(catalog.setEffort(editor, 0, JSON.stringify('brief')), false);
+  assert.equal(editor.edit(next => { next.enabled = true; }), false);
+  assert.equal(await editor.save(), false); assert.equal(h.mutations.length, 0);
+  assert.deepEqual(copy(h.config().value.ui), ui);
+  editor.dispose(); catalog.dispose();
+});
+
+test('only explicit model selection updates pair and exact effort, preserving candidate metadata', async () => {
   const ui = configured(), h = harness(ui), catalog = new ModelCatalog(h.ctx), editor = new RouterEditor(h.ctx, t); await catalog.load();
   assert.equal(catalog.select(editor, 0, key('alpha', 'actual-model')), true);
   const draft = copy(editor.getSnapshot().draft); assert.deepEqual(draft, ui);
@@ -192,11 +209,11 @@ test('only explicit model selection updates pair and exact effort, preserving pr
 test('undeclared native default needs one real effort, with no synthetic default option', async () => {
   const h = harness(configured()), catalog = new ModelCatalog(h.ctx), editor = new RouterEditor(h.ctx, t); await catalog.load();
   assert.equal(catalog.select(editor, 0, key('alpha', 'no-default')), true);
-  assert.equal(editor.getSnapshot().draft.presets[0].effort, '');
+  assert.equal(editor.getSnapshot().draft.candidates[0].effort, '');
   const nodes = page(editor, catalog), picker = field(nodes, 'select', 'effort'); assert.ok(nodes.includes(t('effortRequired')));
   assert.deepEqual(flatten(picker).filter(node => node?.type === 'option').map(node => node.props.value), ['', JSON.stringify('real')]);
   const before = copy(editor.getSnapshot()); picker.props.onChange({ target: { value: JSON.stringify('default') } }); assert.deepEqual(copy(editor.getSnapshot()), before);
-  picker.props.onChange({ target: { value: JSON.stringify('real') } }); assert.equal(editor.getSnapshot().draft.presets[0].effort, 'real');
+  picker.props.onChange({ target: { value: JSON.stringify('real') } }); assert.equal(editor.getSnapshot().draft.candidates[0].effort, 'real');
   assert.equal(await editor.save(), true); editor.dispose(); catalog.dispose();
 });
 
@@ -207,18 +224,18 @@ test('verified absent or empty reasoning supports null and never changes an exis
     h.setResponse(async () => ok(value)); const before = copy(editor.getSnapshot()); await catalog.load();
     assert.deepEqual(copy(editor.getSnapshot()), before);
     assert.equal(catalog.select(editor, 0, key('alpha', 'plain')), true);
-    assert.equal(editor.getSnapshot().draft.presets[0].effort, null);
+    assert.equal(editor.getSnapshot().draft.candidates[0].effort, null);
     const nodes = page(editor, catalog), picker = field(nodes, 'select', 'effort');
     assert.ok(nodes.includes(t('noReasoning')));
     assert.deepEqual(flatten(picker).filter(node => node?.type === 'option').map(node => node.props.value), ['', 'null']);
-    assert.equal(await editor.save(), true); assert.equal(h.mutations[0].ops[1].value.presets[0].effort, null);
+    assert.equal(await editor.save(), true); assert.equal(h.mutations[0].ops[0].value.candidates[0].effort, null);
     editor.dispose(); catalog.dispose();
   }
 });
 
 test('failed malformed and unknown catalog records cannot manufacture null or discard drafts', async () => {
   const h = harness(configured()), catalog = new ModelCatalog(h.ctx), editor = new RouterEditor(h.ctx, t);
-  editor.edit(next => { next.presets[0].description = 'Retain dirty draft'; }); const before = copy(editor.getSnapshot());
+  editor.edit(next => { next.candidates[0].description = 'Retain dirty draft'; }); const before = copy(editor.getSnapshot());
   for (const response of [
     { ok: false, error: { message: 'offline' } }, ok({ ...nativeCatalog(), failures: [{ id: 'alpha', message: 'partial' }] }),
     ok({ groups: [{ id: 'alpha', models: [{}] }], failures: [] }),
@@ -236,7 +253,7 @@ test('failed malformed and unknown catalog records cannot manufacture null or di
 });
 
 test('saved stale effort remains visible and cannot be newly selected', async () => {
-  const ui = configured(); ui.presets[0].effort = 'old-effort';
+  const ui = configured(); ui.candidates[0].effort = 'old-effort';
   const h = harness(ui), catalog = new ModelCatalog(h.ctx), editor = new RouterEditor(h.ctx, t); await catalog.load();
   const nodes = page(editor, catalog), picker = field(nodes, 'select', 'effort');
   assert.ok(nodes.includes('Friendly Model — actual-model'));
@@ -244,18 +261,18 @@ test('saved stale effort remains visible and cannot be newly selected', async ()
   const unknown = flatten(picker).find(node => node?.type === 'option' && node.props.value === JSON.stringify('old-effort'));
   assert.equal(unknown.props.disabled, true); const before = copy(editor.getSnapshot());
   picker.props.onChange({ target: { value: JSON.stringify('old-effort') } }); assert.deepEqual(copy(editor.getSnapshot()), before);
-  picker.props.onChange({ target: { value: JSON.stringify('brief') } }); assert.equal(editor.getSnapshot().draft.presets[0].effort, 'brief');
-  assert.equal(editor.getSnapshot().draft.presets[0].unknownField, 'preserve'); editor.dispose(); catalog.dispose();
+  picker.props.onChange({ target: { value: JSON.stringify('brief') } }); assert.equal(editor.getSnapshot().draft.candidates[0].effort, 'brief');
+  assert.equal(editor.getSnapshot().draft.candidates[0].id, 'keep-alias'); assert.equal(editor.getSnapshot().draft.candidates[0].name, 'Keep name'); editor.dispose(); catalog.dispose();
 });
 
-test('stale callbacks revalidate current catalog, effort and preset identity', async () => {
+test('stale callbacks revalidate current catalog, effort and candidate identity', async () => {
   const h = harness(configured()), catalog = new ModelCatalog(h.ctx), editor = new RouterEditor(h.ctx, t); await catalog.load();
   const nodes = page(editor, catalog), picker = field(nodes, 'select', 'chooseModel'), effort = field(nodes, 'select', 'effort');
   const updated = nativeCatalog(); updated.groups[0].models = [{ id: 'actual-model', reasoning: { efforts: [{ id: 'fresh', name: 'Fresh' }], defaultEffort: 'fresh' } }];
   h.setResponse(async () => ok(updated)); await catalog.load(); let before = copy(editor.getSnapshot());
   picker.props.onChange({ target: { value: key('alpha', 'no-default') } }); effort.props.onChange({ target: { value: JSON.stringify('brief') } });
   assert.deepEqual(copy(editor.getSnapshot()), before);
-  editor.edit(next => { next.presets[0].id = 'replacement'; }); before = copy(editor.getSnapshot());
+  editor.edit(next => { next.candidates[0].id = 'replacement'; }); before = copy(editor.getSnapshot());
   picker.props.onChange({ target: { value: key('alpha', 'actual-model') } }); effort.props.onChange({ target: { value: JSON.stringify('fresh') } });
   assert.deepEqual(copy(editor.getSnapshot()), before); editor.dispose(); catalog.dispose();
 });
@@ -266,23 +283,23 @@ test('losing reasoning never silently replaces a saved effort with null; explici
   const before = copy(editor.getSnapshot()); await catalog.load(); assert.deepEqual(copy(editor.getSnapshot()), before);
   const picker = field(page(editor, catalog), 'select', 'effort');
   picker.props.onChange({ target: { value: JSON.stringify('brief') } }); assert.deepEqual(copy(editor.getSnapshot()), before);
-  picker.props.onChange({ target: { value: 'null' } }); assert.equal(editor.getSnapshot().draft.presets[0].effort, null);
+  picker.props.onChange({ target: { value: 'null' } }); assert.equal(editor.getSnapshot().draft.candidates[0].effort, null);
   editor.dispose(); catalog.dispose();
 });
 
-test('catalog failure does not block old configuration management, saving, raw CAS or unknown fields', async () => {
+test('catalog failure does not block candidate management, saving or raw CAS', async () => {
   const h = harness(configured()), catalog = new ModelCatalog(h.ctx), editor = new RouterEditor(h.ctx, t);
   h.setResponse(async () => { throw Error('catalog offline'); }); await catalog.load();
-  editor.edit(next => { next.presets[0].description = 'Edit despite offline catalog'; });
+  editor.edit(next => { next.candidates[0].description = 'Edit despite offline catalog'; });
   assert.equal(await editor.save(), true); assert.equal(h.mutations.length, 1); assert.equal(h.mutations[0].revision, 9);
-  assert.deepEqual(h.mutations[0].ops.map(op => [op.op, op.path]), [['unset', ['policy']], ['set', ['ui']]]);
-  assert.equal(h.mutations[0].ops[1].value.presets[0].unknownField, 'preserve'); assert.equal(h.mutations[0].ops[1].value.presets[0].effort, 'thorough');
+  assert.deepEqual(h.mutations[0].ops.map(op => [op.op, op.path]), [['set', ['ui']]]);
+  assert.equal(h.mutations[0].ops[0].value.candidates[0].description, 'Edit despite offline catalog'); assert.equal(h.mutations[0].ops[0].value.candidates[0].effort, 'thorough');
   assert.equal(editor.getSnapshot().saved, true); assert.equal(editor.getSnapshot().conflicted, false); editor.dispose(); catalog.dispose();
 });
 
 test('successful saves remain saved and nonconflicted across independent catalog refreshes', async () => {
   const h = harness(configured()), catalog = new ModelCatalog(h.ctx), editor = new RouterEditor(h.ctx, t); await catalog.load();
-  editor.edit(next => { next.presets[0].description = 'Saved configuration'; }); assert.equal(await editor.save(), true);
+  editor.edit(next => { next.candidates[0].description = 'Saved configuration'; }); assert.equal(await editor.save(), true);
   const before = copy(editor.getSnapshot()); h.subscriptions.get('settings/document-updated')(); await catalog.inFlight.promise;
   assert.deepEqual(copy(editor.getSnapshot()), before); assert.equal(editor.getSnapshot().saved, true); assert.equal(editor.getSnapshot().dirty, false);
   assert.equal(editor.getSnapshot().conflicted, false); assert.equal(h.mutations.length, 1); editor.dispose(); catalog.dispose();
@@ -292,7 +309,7 @@ test('actual plugin lifecycle wires initial load, connection reset, new model ev
   const h = harness(configured()); plugin.apply(h.ctx);
   const component = h.slots[0].component({ view: 'page' }); const { catalog, editor } = component.props;
   await catalog.inFlight.promise; assert.deepEqual(h.rpcArgs, [[]]); assert.equal(h.subscriptions.size, 5);
-  editor.edit(next => { next.presets[0].description = 'Detached draft'; }); const draft = copy(editor.getSnapshot().draft);
+  editor.edit(next => { next.candidates[0].description = 'Detached draft'; }); const draft = copy(editor.getSnapshot().draft);
   const value = nativeCatalog(); value.groups[0].models.push({ id: 'added-after-settings', name: 'Newly added' });
   h.setResponse(async () => ok(value)); h.subscriptions.get('llm/models-updated')(); await catalog.inFlight.promise;
   assert.ok(page(editor, catalog).includes('Newly added — added-after-settings')); assert.deepEqual(copy(editor.getSnapshot().draft), draft); assert.equal(editor.getSnapshot().conflicted, false);

@@ -67,10 +67,10 @@ test('route evidence strips extras and never invokes route getters',()=>{
  assert.equal(routeEvidence({get provider(){throw Error('getter');},model:'m'}),null);
 });
 test('async decision evidence is bounded, parent-scoped and independent of task success',async()=>{
- const base={parentId:'root',decisionId:'d',provider:'p',model:'m',effort:'low',policyRevision:'rev',kind:'subagent',presetId:'fast',childId:'child'};
+ const base={parentId:'root',decisionId:'d',provider:'p',model:'m',effort:'low',policyRevision:'rev',kind:'subagent',candidateId:'fast',childId:'child'};
  const records=[{...base,status:'accepted'},{...base,status:'settled'},{...base,parentId:'other',decisionId:'secret',status:'accepted'}];
  const cards=await decisionSnapshot(parent,records,{readChildRoute:async()=>({provider:'p',model:'m',effort:'low'})});
- assert.equal(cards.length,1);assert.equal(cards[0].settled,true);assert.equal(cards[0].presetId,'fast');assert.equal(cards[0].observed.model,'m');assert.equal(cards[0].accepted,true);
+ assert.equal(cards.length,1);assert.equal(cards[0].settled,true);assert.equal(cards[0].candidateId,'fast');assert.equal(cards[0].observed.model,'m');assert.equal(cards[0].accepted,true);
  await assert.rejects(decisionSnapshot(parent,records,{limit:101}),{code:'INVALID_REQUEST'});
 });
 test('unknown and unresolved recovered decisions cannot claim settlement',async()=>{

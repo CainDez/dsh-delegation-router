@@ -2,10 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeConfig } from '../src/config.js';
 import { selectRoute } from '../src/policy.js';
-import { createDefaultPresets, DEFAULT_PRESET_ID } from '../src/default-presets.js';
 
-const preset=(id,extra={})=>({id,name:'Preset '+id,provider:'provider-'+id,model:'model-'+id,effort:'low',description:'Fixed selection',...extra});
-const config=(extra={})=>({schemaVersion:2,enabled:true,presets:[preset('a'),preset('b')],defaultPreset:'a',...extra});
+const candidate=(id,extra={})=>({id,name:'Candidate '+id,provider:'provider-'+id,model:'model-'+id,effort:'low',description:'Fixed selection',...extra});
+const config=(extra={})=>({schemaVersion:3,enabled:true,candidates:[candidate('a'),candidate('b')],defaultCandidateId:'a',...extra});
 const meta=(extra={})=>({reasoning:{efforts:['low','high']},inputModalities:['text'],context:8000,...extra});
 const catalog=()=>new Map([['a',meta()],['b',meta()]]);
 const auth=[{provider:'provider-a',model:'model-a'},{provider:'provider-b',model:'model-b'}];
@@ -13,72 +12,71 @@ const route=(cfg=config(),input={})=>selectRoute(cfg,{facts:{payload:{inputModal
 const invalid=fn=>assert.throws(fn,{code:'INVALID_CONFIG'});
 const noRoute=fn=>assert.throws(fn,{code:'NO_ROUTE'});
 
-test('v2 defaults are frozen detached data and normalize idempotently',()=>{
-  const empty=normalizeConfig();assert.equal(empty.schemaVersion,2);assert.equal(empty.enabled,false);assert.deepEqual(empty.presets,createDefaultPresets());
-  assert.equal(empty.defaultPreset,DEFAULT_PRESET_ID);assert.deepEqual(normalizeConfig(empty),empty);
-  assert.equal(Object.hasOwn(empty,'teams'),false);assert.equal(empty.limits.metadataTimeoutMs,5000);
-  const raw=config(),normalized=normalizeConfig(raw);raw.presets[0].name='changed';
-  assert.equal(normalized.presets[0].name,'Preset a');assert.ok(Object.isFrozen(normalized.presets[0]));
+test('the absent entry returns a fresh frozen empty v3 configuration and normalizes idempotently',()=>{
+  const empty=normalizeConfig();assert.equal(empty.schemaVersion,3);assert.equal(empty.enabled,false);assert.deepEqual(empty.candidates,[]);
+  assert.equal(Object.hasOwn(empty,'defaultCandidateId'),false);assert.equal(empty.limits.metadataTimeoutMs,5000);
+  assert.ok(Object.isFrozen(empty));assert.deepEqual(normalizeConfig(empty),empty);
+  assert.notEqual(normalizeConfig().candidates,normalizeConfig().candidates);
+  assert.equal(Object.hasOwn(empty,'teams'),false);
+  const raw=config(),normalized=normalizeConfig(raw);raw.candidates[0].name='changed';
+  assert.equal(normalized.candidates[0].name,'Candidate a');assert.ok(Object.isFrozen(normalized.candidates[0]));
   assert.deepEqual(normalizeConfig(normalized),normalized);
-  assert.deepEqual(Object.keys(normalized).sort(),['schemaVersion','enabled','presets','defaultPreset','limits'].sort());
+  assert.deepEqual(Object.keys(normalized).sort(),['schemaVersion','enabled','candidates','defaultCandidateId','limits'].sort());
 });
-test('only exact disabled-Team read alias is accepted and never re-emitted',()=>{
-  const raw=config({teams:{enabled:false}}), canonical=normalizeConfig(config());
-  assert.deepEqual(normalizeConfig(raw),canonical);assert.deepEqual(raw.teams,{enabled:false});
-  assert.equal(Object.hasOwn(normalizeConfig(raw),'teams'),false);
-  for(const teams of [undefined,null,{},false,true,[],{enabled:undefined},{enabled:0},{enabled:'false'},{enabled:false,unknown:1}]) invalid(()=>normalizeConfig(config({teams})));
-  for(const enabled of [false,true]) assert.throws(()=>normalizeConfig(config({enabled,teams:{enabled:true}})),error=>error.code==='TEAM_ROUTING_REMOVED'&&/remove.*teams.*review/i.test(error.message));
-  let reads=0;const teams=Object.defineProperty({},'enabled',{enumerable:true,get(){reads++;return true;}});
-  invalid(()=>normalizeConfig(config({teams})));assert.equal(reads,0);
+test('every explicit source including {} must declare schemaVersion 3',()=>{
+  invalid(()=>normalizeConfig({}));
+  for(const raw of [{schemaVersion:1},{schemaVersion:2},{schemaVersion:4},{schemaVersion:'3'},{schemaVersion:null},{enabled:false},{candidates:[]}]) invalid(()=>normalizeConfig(raw));
+  assert.deepEqual(normalizeConfig({schemaVersion:3}),normalizeConfig());
+  invalid(()=>normalizeConfig({...config(),unexpected:[]}));
 });
-test('v1 fields and rules cannot be silently discarded or migrated',()=>{
-  invalid(()=>normalizeConfig({schemaVersion:1,models:[]}));
-  for(const field of ['models','rules','lanes','review','guidance','defaultModel']) invalid(()=>normalizeConfig({...config(),[field]:[]}));
+test('enabled configurations require a valid defaultCandidateId and at least one candidate',()=>{
+  invalid(()=>normalizeConfig({...config(),defaultCandidateId:undefined}));
+  invalid(()=>normalizeConfig(config({defaultCandidateId:'missing'})));
+  invalid(()=>normalizeConfig(config({candidates:[]})));
+  const disabled=normalizeConfig({schemaVersion:3,candidates:[candidate('a')]});
+  assert.equal(disabled.enabled,false);assert.equal(Object.hasOwn(disabled,'defaultCandidateId'),false);
+  invalid(()=>normalizeConfig({schemaVersion:3,candidates:[candidate('a')],defaultCandidateId:'missing'}));
+  assert.equal(normalizeConfig({schemaVersion:3,candidates:[candidate('a')],defaultCandidateId:'a'}).defaultCandidateId,'a');
 });
-test('enabled configurations require a valid explicit default, disabled defaults remain checked',()=>{
-  invalid(()=>normalizeConfig({...config(),defaultPreset:undefined}));
-  invalid(()=>normalizeConfig(config({defaultPreset:'missing'})));
-  invalid(()=>normalizeConfig(config({presets:[]})));
-  assert.equal(normalizeConfig({schemaVersion:2,presets:[preset('a')]}).enabled,false);
-  invalid(()=>normalizeConfig({schemaVersion:2,presets:[preset('a')],defaultPreset:'missing'}));
-});
-test('strict preset schema rejects malformed text, duplicate ids, fake default and missing effort',()=>{
-  for(const extra of [{unknown:true},{schemaVersion:1},{enabled:'yes'},{presets:null},{limits:null},{teams:null},{limits:{unknown:1}},{teams:{enabled:'yes'}},{limits:{maxPendingStarts:0}},{limits:{metadataTimeoutMs:1.1}},{limits:{maxCreationsPerParent:Infinity}},{presets:[preset('a'),preset('a')]}]) invalid(()=>normalizeConfig(config(extra)));
-  for(const extra of [{unknown:1},{id:'bad id'},{name:''},{name:' spaced'},{name:'x'.repeat(121)},{name:'line\nline'},{provider:''},{model:'m'.repeat(201)},{effort:''},{effort:'default'},{effort:undefined},{effort:123},{description:'x'.repeat(1001)},{description:'line\nline'}]) invalid(()=>normalizeConfig(config({presets:[preset('a',extra)]})));
-  assert.equal(normalizeConfig(config({presets:[preset('a',{effort:null,description:''})]})).presets[0].effort,null);
+test('strict candidate schema rejects unknown keys, malformed text, duplicate ids and fake efforts',()=>{
+  for(const extra of [{unknown:true},{schemaVersion:1},{enabled:'yes'},{candidates:null},{limits:null},{limits:{unknown:1}},{limits:{maxPendingStarts:0}},{limits:{metadataTimeoutMs:1.1}},{limits:{maxCreationsPerParent:Infinity}},{candidates:[candidate('a'),candidate('a')]}]) invalid(()=>normalizeConfig(config(extra)));
+  for(const extra of [{unknown:1},{id:'bad id'},{id:'-bad'},{name:''},{name:' spaced'},{name:'x'.repeat(121)},{name:'line\nline'},{provider:''},{model:'m'.repeat(201)},{effort:''},{effort:'default'},{effort:undefined},{effort:123},{description:'x'.repeat(1001)},{description:'line\nline'}]) invalid(()=>normalizeConfig(config({candidates:[candidate('a',extra)]})));
+  const normalized=normalizeConfig(config({candidates:[candidate('a',{effort:null,description:''})]}));
+  assert.equal(normalized.candidates[0].effort,null);assert.equal(normalized.candidates[0].description,'');
+  assert.deepEqual(Object.keys(normalized.candidates[0]).sort(),['id','name','provider','model','effort','description'].sort());
 });
 test('descriptor-first checks reject getters, exotic prototypes, hidden fields, pollution and cycles',()=>{
-  let invoked=0;const getter=Object.defineProperty({},'presets',{enumerable:true,get(){invoked++;return [];}});invalid(()=>normalizeConfig(getter));
-  const nested=config();Object.defineProperty(nested.presets[0],'name',{get(){invoked++;return 'bad';}});invalid(()=>normalizeConfig(nested));
+  let invoked=0;const getter=Object.defineProperty({},'candidates',{enumerable:true,get(){invoked++;return [];}});invalid(()=>normalizeConfig(getter));
+  const nested=config();Object.defineProperty(nested.candidates[0],'name',{get(){invoked++;return 'bad';}});invalid(()=>normalizeConfig(nested));
   invalid(()=>normalizeConfig(JSON.parse('{"__proto__":{"polluted":true}}')));invalid(()=>normalizeConfig(Object.create({enabled:true})));
   invalid(()=>normalizeConfig({...config(),[Symbol('s')]:1}));invalid(()=>normalizeConfig(Object.defineProperty(config(),'hidden',{value:1})));
-  const cycle=config();cycle.presets.push(cycle);invalid(()=>normalizeConfig(cycle));
-  const sparse=config();delete sparse.presets[0];invalid(()=>normalizeConfig(sparse));
-  invalid(()=>normalizeConfig(config({presets:Array.from({length:129},(_,i)=>preset('p'+i))})));
+  const cycle=config();cycle.candidates.push(cycle);invalid(()=>normalizeConfig(cycle));
+  const sparse=config();delete sparse.candidates[0];invalid(()=>normalizeConfig(sparse));
+  invalid(()=>normalizeConfig(config({candidates:Array.from({length:129},(_,i)=>candidate('p'+i))})));
   let deep={};for(let i=0;i<40;i++)deep={nested:deep};invalid(()=>normalizeConfig(deep));assert.equal(invoked,0);assert.equal({}.polluted,undefined);
 });
-test('default and explicit presets select exactly one immutable route',()=>{
-  assert.deepEqual(route(),{presetId:'a',provider:'provider-a',model:'model-a',effort:'low',reason:'default-preset'});
-  const selected=route(config(),{proposal:{presetId:'b'}});assert.equal(selected.presetId,'b');assert.equal(selected.reason,'explicit-preset');
-  for(const field of ['matchedRules','lane','laneFallback','review','modelId']) assert.equal(field in selected,false);
-  assert.equal(route(config(),{facts:{assessment:{taskType:'review',complexity:'hard'}}}).presetId,'a');
+test('default and explicit candidates select exactly one immutable fixed route',()=>{
+  assert.deepEqual(route(),{candidateId:'a',provider:'provider-a',model:'model-a',effort:'low',reason:'default-candidate'});
+  const selected=route(config(),{proposal:{candidateId:'b'}});assert.equal(selected.candidateId,'b');assert.equal(selected.reason,'explicit-candidate');
+  assert.deepEqual(Object.keys(selected).sort(), ['candidateId','provider','model','effort','reason'].sort());
+  assert.equal(route(config(),{facts:{assessment:{taskType:'review',complexity:'hard'}}}).candidateId,'a');
 });
-test('unknown, unauthorized or unavailable chosen presets never fall back to an eligible default',()=>{
-  noRoute(()=>route(config(),{proposal:{presetId:'missing'}}));
-  noRoute(()=>route(config(),{proposal:{presetId:'b'},authorizedRoutes:[auth[0]]}));
-  noRoute(()=>route(config(),{proposal:{presetId:'b'},catalog:new Map([['a',meta()]])}));
+test('unknown, unauthorized or unavailable chosen candidates never fall back to an eligible default',()=>{
+  noRoute(()=>route(config(),{proposal:{candidateId:'missing'}}));
+  noRoute(()=>route(config(),{proposal:{candidateId:'b'},authorizedRoutes:[auth[0]]}));
+  noRoute(()=>route(config(),{proposal:{candidateId:'b'},catalog:new Map([['a',meta()]])}));
   noRoute(()=>route(config(),{catalog:new Map([['b',meta()]])}));
   noRoute(()=>route(config(),{authorizedRoutes:[auth[1]]}));
   assert.throws(()=>route(config({enabled:false})),{code:'ROUTER_DISABLED'});
 });
-test('proposals accept only a data-only presetId, not raw route overrides or old routing fields',()=>{
-  for(const proposal of [null,{},'b',{presetId:'b',effort:'high'},{modelId:'b'},{presetId:'b',lane:'hard'},{presetId:'b',provider:'p'},Object.create({presetId:'b'})]) assert.throws(()=>route(config(),{proposal}),{code:'INVALID_PROPOSAL'});
-  let called=false;const proposal=Object.defineProperty({},'presetId',{enumerable:true,get(){called=true;return 'b';}});
+test('proposals accept only a data-only candidateId, not raw route overrides or unknown fields',()=>{
+  for(const proposal of [null,{},'b',{candidateId:'b',effort:'high'},{candidateId:'b',provider:'p'},{unexpected:'b'},Object.create({candidateId:'b'})]) assert.throws(()=>route(config(),{proposal}),{code:'INVALID_PROPOSAL'});
+  let called=false;const proposal=Object.defineProperty({},'candidateId',{enumerable:true,get(){called=true;return 'b';}});
   assert.throws(()=>route(config(),{proposal}),{code:'INVALID_PROPOSAL'});assert.equal(called,false);
 });
-test('same model can have multiple fixed effort presets without inferred diversity or fallback',()=>{
-  const presets=[preset('a'),preset('high',{provider:'provider-a',model:'model-a',effort:'high'})];
-  const cfg=config({presets}),input={catalog:new Map(presets.map(p=>[p.id,meta()])),proposal:{presetId:'high'}};
+test('the same model can have multiple fixed effort candidates without inferred diversity or fallback',()=>{
+  const candidates=[candidate('a'),candidate('high',{provider:'provider-a',model:'model-a',effort:'high'})];
+  const cfg=config({candidates}),input={catalog:new Map(candidates.map(c=>[c.id,meta()])),proposal:{candidateId:'high'}};
   assert.equal(route(cfg,input).effort,'high');
   noRoute(()=>route(cfg,{...input,authorizedRoutes:[{...auth[0],efforts:['low']}]}));
   const limited=new Map([['a',meta()],['high',meta({reasoning:{efforts:['low']}})]]);
@@ -87,10 +85,10 @@ test('same model can have multiple fixed effort presets without inferred diversi
 test('authorization is mandatory, exact provider/model, and respects effort constraints',()=>{
   assert.throws(()=>route(config(),{authorizedRoutes:undefined}),{code:'INVALID_AUTHORIZATION'});
   for(const authorizedRoutes of [[],[{modelId:'a'}],[{model:'model-a'}],[{provider:'PROVIDER-A',model:'model-a'}],[{...auth[0],effort:'high'}],[{...auth[0],efforts:[]}]]) noRoute(()=>route(config(),{authorizedRoutes}));
-  assert.equal(route(config(),{authorizedRoutes:[{...auth[0],efforts:['low']}]}).presetId,'a');
+  assert.equal(route(config(),{authorizedRoutes:[{...auth[0],efforts:['low']}]}).candidateId,'a');
 });
 test('effort null requires explicit empty capability metadata, never unknown or malformed data',()=>{
-  const cfg=config({presets:[preset('a',{effort:null})]});
+  const cfg=config({candidates:[candidate('a',{effort:null})]});
   assert.equal(route(cfg,{catalog:new Map([['a',meta({reasoning:{efforts:[]}})]])}).effort,null);
   for(const metadata of [undefined,null,{},meta({reasoning:undefined}),meta({reasoning:{}}),meta({reasoning:{efforts:null}}),meta(),meta({reasoning:{efforts:['']}}),meta({reasoning:{efforts:['default']}})]) noRoute(()=>route(cfg,{catalog:new Map([['a',metadata]])}));
   noRoute(()=>route(config(),{catalog:new Map([['a',meta({reasoning:{efforts:[]}})]])}));

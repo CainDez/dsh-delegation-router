@@ -8,7 +8,7 @@ import { MemoryJournal, FileJournal } from '../src/journal.js';
 
 const limits = { maxPendingStarts: 2, maxActivePerModel: 2, maxCreationsPerParent: 3 };
 const ledger = extra => new ReservationLedger({ ...limits, ...extra });
-const record = (status, extra = {}) => ({ decisionId: 'decision-1', parentId: 'parent', policyRevision: 'revision', modelId: 'a', provider: 'provider-a', model: 'model-a', effort: 'low', kind: 'subagent', time: 0, status, ...extra });
+const record = (status, extra = {}) => ({ decisionId: 'decision-1', candidateId: 'a', parentId: 'parent', policyRevision: 'revision', modelId: 'a', provider: 'provider-a', model: 'model-a', effort: 'low', kind: 'subagent', time: 0, status, ...extra });
 function temporary(t) { const dir = mkdtempSync(join(tmpdir(), 'dsh-router-audit-test-')); t.after(() => rmSync(dir, { recursive: true, force: true })); return join(dir, 'audit.jsonl'); }
 
 test('ledger reservation transitions preserve pending/active/created invariants', () => {
@@ -65,10 +65,17 @@ test('recovery rejects corrupt status and incomplete identity rather than silent
   }
 });
 
+test('recovery rejects missing candidate identities and unknown audit fields', () => {
+  for (const extra of [{candidateId:undefined},{candidateId:''},{candidateId:'x'.repeat(121)},{kind:'teammate'},{unexpected:'value'}]) {
+    assert.throws(()=>ledger().recover([record('intent',extra)]),{code:'AUDIT_FORMAT_UNSUPPORTED'});
+  }
+});
+
 test('recovery refuses identity drift and impossible state transitions for a decision', () => {
   for (const records of [
     [record('intent'), record('accepted', { parentId: 'other-parent', childId: 'child' })],
     [record('intent'), record('accepted', { modelId: 'b', childId: 'child' })],
+    [record('intent'), record('accepted', { candidateId: 'b', childId: 'child' })],
     [record('intent'), record('accepted', { childId: 'child' }), record('rejected')],
   ]) assert.throws(() => ledger().recover(records), { code: 'AUDIT_CORRUPT' });
 });

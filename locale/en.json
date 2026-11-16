@@ -1,11 +1,10 @@
 {
   "meta": {
     "title": "Delegation Router",
-    "description": "Low/High/Max delegation presets with parent-model inheritance, exact effort validation and autosaved settings. Respects host authorization; never switches the parent Agent."
+    "description": "User-maintained exact candidate models (provider / model / reasoning effort plus one default); the main Agent picks one directly at child creation. Autosaved settings; respects host authorization and never switches the parent Agent."
   },
   "config": {
-    "ui": "Delegation presets (canonical ui entry; host authorization still applies)",
-    "policy": "policy (deprecated read alias; canonical editor saves ui)",
+    "ui": "Candidate model configuration (canonical ui entry; host authorization still applies)",
     "auditFile": "Absolute audit path, unique per running profile"
   }
 }

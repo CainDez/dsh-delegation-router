@@ -36,16 +36,20 @@ function fakeClock() {
     }
   };
 }
+const storedUI = () => ({ ...copy(plugin.emptyDraft()), candidates: [
+  { id: 'fast', name: 'Fast', provider: 'p', model: 'm', effort: 'low', description: '' },
+  { id: 'deep', name: 'Deep', provider: 'p', model: 'm', effort: 'high', description: '' }
+], defaultCandidateId: 'fast' });
 function harness(t, options = {}) {
   const clock = fakeClock(), mutations = [], listeners = new Set();
-  const value = options.value ?? { ui: copy(plugin.defaults()) };
+  const value = options.value ?? { ui: storedUI() };
   let snapshot = { status: 'ready', writable: true, revision: 7, value: copy(value), user: copy(value), ...options };
   const notify = () => { for (const fn of listeners) fn(); };
   const form = { getSnapshot: () => snapshot, subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
   const h = { clock, mutations, current: () => snapshot, loads: 0,
     change(patch, emit = true) { snapshot = { ...snapshot, ...patch }; if (emit) notify(); },
     ack(row, effective) {
-      const user = { ...copy(snapshot.user), ui: copy(row.ops[1].value) }; delete user.policy;
+      const user = { ...copy(snapshot.user), ui: copy(row.ops[0].value) };
       h.change({ revision: row.revision + 1, user, value: effective ?? copy(user) });
     },
     mutate: async row => { h.ack(row); return { ok: true }; },
@@ -58,18 +62,18 @@ function harness(t, options = {}) {
   t.after(() => h.dispose());
   return h;
 }
-const rename = (h, name) => h.editor.edit(next => { next.presets[0].name = name; });
+const rename = (h, name) => h.editor.edit(next => { next.candidates[0].name = name; });
 function flatten(node) {
   if (node === null || node === undefined || node === false) return [];
   if (Array.isArray(node)) return node.flatMap(flatten);
   if (typeof node !== 'object') return [node];
-  if (typeof node.type === 'function') return flatten(node.type(node.props));
+  if (node.type === 'function') return flatten(node.type(node.props));
   return [node, ...flatten(node.props?.children)];
 }
 const page = h => flatten(plugin.RouterPage({ editor: h.editor, t: translate, view: 'page' }));
 const button = (h, key) => page(h).find(node => node?.type === 'button' && node.props.children.includes(translate(key)));
 
-test('initial defaults, subscription refresh and reload never autosave', async t => {
+test('initial empty drafts, subscription refresh and reload never autosave', async t => {
   const h = harness(t, { value: {}, user: {} });
   assert.equal(h.editor.getSnapshot().dirty, false);
   h.change({ revision: 8 }); await h.editor.reload(); await h.clock.tick(6000);
@@ -81,8 +85,8 @@ test('600ms trailing debounce submits only the latest draft and revision once', 
   assert.equal(h.mutations.length, 0); rename(h, 'latest'); await h.clock.tick(599);
   assert.equal(h.mutations.length, 0); await h.clock.tick(1);
   assert.equal(h.mutations.length, 1); assert.equal(h.mutations[0].revision, 7);
-  assert.equal(h.mutations[0].ops[1].value.presets[0].name, 'latest');
-  assert.deepEqual(h.mutations[0].ops.map(row => [row.op, row.path]), [['unset', ['policy']], ['set', ['ui']]]);
+  assert.equal(h.mutations[0].ops[0].value.candidates[0].name, 'latest');
+  assert.deepEqual(h.mutations[0].ops.map(row => [row.op, row.path]), [['set', ['ui']]]);
   assert.equal(h.editor.getSnapshot().saved, true); assert.equal(h.editor.getSnapshot().autosavePaused, false);
   await h.clock.tick(6000); assert.equal(h.mutations.length, 1);
 });
@@ -91,18 +95,23 @@ test('valid to invalid edits cancel old work; only a repaired draft saves', asyn
   const h = harness(t); rename(h, 'valid'); await h.clock.tick(599); rename(h, '');
   await h.clock.tick(6000); assert.equal(h.mutations.length, 0); assert.equal(h.clock.pending.size, 0);
   rename(h, 'repaired'); await h.clock.tick(600); assert.equal(h.mutations.length, 1);
-  assert.equal(h.mutations[0].ops[1].value.presets[0].name, 'repaired');
+  assert.equal(h.mutations[0].ops[0].value.candidates[0].name, 'repaired');
 });
 
 test('missing defaults, duplicate IDs and invalid limits never enter the autosave queue', async t => {
   for (const invalidate of [
-    next => { next.enabled = true; delete next.defaultPreset; },
-    next => { next.presets[1].id = next.presets[0].id; },
+    next => { next.enabled = true; delete next.defaultCandidateId; },
+    next => { next.candidates[1].id = next.candidates[0].id; },
     ...['maxPendingStarts', 'maxActivePerModel', 'maxCreationsPerParent', 'metadataTimeoutMs'].flatMap(key =>
       [0, -1, 1.5, '', '2', null, key === 'metadataTimeoutMs' ? 600001 : 1000001].map(value => next => { next.limits[key] = value; })),
     next => { next.enabled = 'true'; },
-    next => { next.presets[0].effort = ''; },
-    next => { next.presets.splice(1, 1); }
+    next => { next.candidates[0].effort = ''; },
+    next => { next.candidates[0].unexpected = true; },
+    next => { next.candidates[0].extra = 'unknown key'; },
+    next => { next.extra = true; },
+    next => { next.limits.unknown = 5; },
+    next => { next.unexpected = []; },
+    next => { next.candidates.splice(0, 1); }
   ]) {
     const h = harness(t); h.editor.edit(invalidate); await h.clock.tick(1200);
     assert.equal(h.mutations.length, 0); assert.equal(h.clock.pending.size, 0);
@@ -118,7 +127,7 @@ test('inclusive limit boundaries and omitted limits save without coercion', asyn
     });
     const desired = copy(h.editor.getSnapshot().draft);
     await h.clock.tick(600); assert.equal(h.mutations.length, 1);
-    assert.deepEqual(h.mutations[0].ops[1].value, desired);
+    assert.deepEqual(h.mutations[0].ops[0].value, desired);
     assert.equal(h.editor.getSnapshot().saved, true);
   }
 });
@@ -130,7 +139,7 @@ test('native IME handlers cancel pending saves until composition end plus 600ms'
   await h.clock.tick(6000); assert.equal(h.mutations.length, 0); assert.equal(await h.editor.save(), false);
   input.props.onCompositionEnd(); await h.clock.tick(599); assert.equal(h.mutations.length, 0);
   await h.clock.tick(1); assert.equal(h.mutations.length, 1);
-  assert.equal(h.mutations[0].ops[1].value.presets[0].name, '中文输入中');
+  assert.equal(h.mutations[0].ops[0].value.candidates[0].name, '中文输入中');
 });
 
 test('explicit refusal pauses autosave across edits and notifications; explicit retry alone resumes', async t => {
@@ -142,7 +151,7 @@ test('explicit refusal pauses autosave across edits and notifications; explicit 
   assert.equal(h.mutations.length, 1); assert.equal(h.editor.getSnapshot().error, 'original refusal');
   h.mutate = async row => { h.ack(row); return { ok: true }; };
   button(h, 'retry').props.onClick(); await flush();
-  assert.equal(h.mutations.length, 2); assert.equal(h.mutations[1].ops[1].value.presets[0].name, 'retained latest');
+  assert.equal(h.mutations.length, 2); assert.equal(h.mutations[1].ops[0].value.candidates[0].name, 'retained latest');
   assert.equal(h.editor.getSnapshot().saved, true);
   rename(h, 'new edit'); await h.clock.tick(600); assert.equal(h.mutations.length, 3);
 });
@@ -174,7 +183,7 @@ test('local and server CAS conflicts stop edits and retries without losing draft
     else h.change({ revision: 8 });
     await h.clock.tick(600); assert.equal(h.editor.getSnapshot().conflicted, true);
     assert.equal(rename(h, 'forbidden'), false); assert.equal(button(h, 'retry'), undefined);
-    assert.equal(h.editor.getSnapshot().draft.presets[0].name, 'conflicting draft');
+    assert.equal(h.editor.getSnapshot().draft.candidates[0].name, 'conflicting draft');
     await h.clock.tick(6000); assert.equal(h.mutations.length, server ? 1 : 0);
   }
 });
@@ -183,12 +192,15 @@ test('host restrictions arriving during debounce cancel writes, including silent
   for (const patch of [
     { writable: false }, { status: 'unavailable' },
     { user: { ui: { schemaVersion: 1, models: [] } } },
-    { user: { ui: { ...copy(plugin.defaults()), teams: { enabled: true } } } },
-    { user: { ui: copy(plugin.defaults()), policy: {} } }
+    { user: { ui: { schemaVersion: 0 } } },
+    { user: { ui: { schemaVersion: 3, ...storedUI(), unexpected: [] } } },
+    { user: { policy: {} } },
+    { user: Object.assign({ ui: copy(storedUI()) }, { policy: undefined }) },
+    { user: { ui: null } }
   ]) {
     const h = harness(t); rename(h, 'retained'); h.change(patch); await h.clock.tick(6000);
     assert.equal(h.mutations.length, 0); assert.equal(h.clock.pending.size, 0);
-    assert.equal(h.editor.getSnapshot().draft.presets[0].name, 'retained');
+    assert.equal(h.editor.getSnapshot().draft.candidates[0].name, 'retained');
   }
   const h = harness(t); rename(h, 'silent change'); h.change({ writable: false }, false);
   await h.clock.tick(600); assert.equal(h.mutations.length, 0);
@@ -211,7 +223,7 @@ test('superseded timer callbacks and an explicit save cannot duplicate a write',
   stale(); await flush(); assert.equal(h.mutations.length, 0);
   const current = h.clock.latest(); assert.equal(await h.editor.save(), true);
   current(); await h.clock.tick(6000); assert.equal(h.mutations.length, 1);
-  assert.equal(h.mutations[0].ops[1].value.presets[0].name, 'new');
+  assert.equal(h.mutations[0].ops[0].value.candidates[0].name, 'new');
 });
 
 test('editing remains blocked throughout mutation and mirror verification', async t => {
@@ -220,7 +232,7 @@ test('editing remains blocked throughout mutation and mirror verification', asyn
   rename(h, 'writing'); await h.clock.tick(600);
   assert.equal(h.editor.getSnapshot().saving, true); assert.equal(h.editor.getSnapshot().autosavePaused, true);
   assert.equal(rename(h, 'blocked'), false); staleInput.props.onChange({ target: { value: 'stale callback' } });
-  assert.equal(h.editor.getSnapshot().draft.presets[0].name, 'writing');
+  assert.equal(h.editor.getSnapshot().draft.candidates[0].name, 'writing');
   assert.ok(page(h).filter(node => node?.type === 'input').every(node => node.props.disabled));
   await h.clock.tick(6000); assert.equal(h.mutations.length, 1); gate.resolve(); await flush();
   assert.equal(h.editor.getSnapshot().saved, true); assert.equal(h.editor.editable(), true);
@@ -229,11 +241,11 @@ test('editing remains blocked throughout mutation and mirror verification', asyn
 test('late mutation after profile reset cannot acknowledge a colliding revision or requeue work', async t => {
   const h = harness(t), gate = deferred(); h.mutate = () => gate.promise; rename(h, 'old profile');
   await h.clock.tick(600); h.editor.resetConnection();
-  h.change({ revision: 7, value: { ui: copy(plugin.defaults()) }, user: {} });
+  h.change({ revision: 7, value: { ui: storedUI() }, user: {} });
   gate.resolve({ ok: true }); await flush(); await h.clock.tick(6000);
   assert.equal(h.mutations.length, 1); assert.equal(h.loads, 0);
   assert.equal(h.editor.getSnapshot().saved, false); assert.equal(h.editor.getSnapshot().connectionReset, true);
-  assert.equal(h.editor.getSnapshot().draft.presets[0].name, 'old profile');
+  assert.equal(h.editor.getSnapshot().draft.candidates[0].name, 'old profile');
 });
 
 test('beforeunload warns only for unfinished work and unregisters on plugin cleanup', async t => {
@@ -256,15 +268,15 @@ test('beforeunload warns only for unfinished work and unregisters on plugin clea
   const editor = registrations[0]({ view: 'page' }).props.editor;
   const warned = () => { const event = { prevented: false, preventDefault() { this.prevented = true; } }; handlers.get('beforeunload')(event); return event; };
   assert.equal(warned().prevented, false);
-  editor.edit(next => { next.presets[0].name = 'pending'; });
+  editor.edit(next => { next.candidates[0].name = 'pending'; });
   assert.equal(warned().prevented, true); assert.equal(warned().returnValue, '');
   await clock.tick(600); assert.equal(warned().prevented, false);
   const gate = deferred(); h.mutate = async row => { await gate.promise; h.ack(row); return { ok: true }; };
-  editor.edit(next => { next.presets[0].name = 'writing'; }); await clock.tick(600);
+  editor.edit(next => { next.candidates[0].name = 'writing'; }); await clock.tick(600);
   assert.equal(editor.getSnapshot().saving, true); assert.equal(warned().prevented, true);
   gate.resolve(); await flush(); assert.equal(warned().prevented, false);
   h.mutate = async () => { throw Error('unknown write'); };
-  editor.edit(next => { next.presets[0].name = 'unknown'; }); await clock.tick(600);
+  editor.edit(next => { next.candidates[0].name = 'unknown'; }); await clock.tick(600);
   assert.equal(editor.getSnapshot().receiptUnverified, true); assert.equal(warned().prevented, true);
   cleanup(); assert.equal(handlers.size, 0); assert.equal(removed, 1); assert.equal(clock.pending.size, 0);
 });
@@ -275,7 +287,7 @@ test('saved-but-overridden stays paused and sticky UI has no normal save or unsa
   assert.equal(status.props.style.position, 'sticky'); assert.equal(status.props.style.top, 0);
   assert.equal(button(h, 'save'), undefined); assert.equal(button(h, 'retry'), undefined);
   assert.ok(flatten(status).some(node => node?.props?.role === 'status' && node.props['aria-live'] === 'polite'));
-  h.mutate = async row => { const ui = copy(row.ops[1].value); ui.presets[0].effort = 'higher-layer'; h.ack(row, { ui }); return { ok: true }; };
+  h.mutate = async row => { const ui = copy(row.ops[0].value); ui.candidates[0].effort = 'higher-layer'; h.ack(row, { ui }); return { ok: true }; };
   rename(h, 'overridden'); await h.clock.tick(600);
   assert.equal(h.editor.getSnapshot().savedButNotLive, true); assert.equal(h.editor.getSnapshot().autosavePaused, true);
   assert.ok(page(h).includes(translate('savedButNotLive'))); assert.equal(button(h, 'retry'), undefined);

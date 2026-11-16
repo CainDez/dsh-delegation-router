@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { normalizeConfig } from './config.js';
-import { selectRoute, resolvePresetTarget } from './policy.js';
+import { selectRoute } from './policy.js';
 import { decisionSnapshot } from './lifecycle.js';
 import { ReservationLedger } from './ledger.js';
 import { fail, assertActive, parentId } from './errors.js';
@@ -8,10 +8,10 @@ const digest = value => createHash('sha256').update(JSON.stringify(value)).diges
 const text = (v,n,max) => { if (typeof v !== 'string' || !v.trim() || v.length > max) fail('INVALID_REQUEST', n + ' must be non-empty bounded text'); return v; };
 export function normalizeRequest(raw) {
   if (!raw || Object.getPrototypeOf(raw) !== Object.prototype) fail('INVALID_REQUEST','Request must be a plain JSON object');
-  const allowed = new Set(['prompt','description','preset_id','selection_reason','policy_revision','cwd']);
+  const allowed = new Set(['prompt','description','candidate_id','policy_revision','cwd']);
   for (const k of Reflect.ownKeys(raw)) if (!allowed.has(k) || !Object.hasOwn(Object.getOwnPropertyDescriptor(raw,k),'value')) fail('INVALID_REQUEST','Unknown or unsafe request field');
   const r = { prompt: text(raw.prompt,'prompt',100000), description: text(raw.description,'description',200) };
-  for (const k of ['preset_id','selection_reason','cwd']) if (raw[k] !== undefined) r[k] = text(raw[k],k,k === 'cwd' ? 4096 : k === 'selection_reason' ? 1000 : 120);
+  for (const k of ['candidate_id','cwd']) if (raw[k] !== undefined) r[k] = text(raw[k],k,k === 'cwd' ? 4096 : 120);
   if (raw.policy_revision !== undefined) r.policy_revision = text(raw.policy_revision,'policy_revision',128);
   return Object.freeze(r);
 }
@@ -39,9 +39,9 @@ export function normalizeMetadata(meta) {
 /** No method in this class writes any Agent model/options or deployment defaults. */
 export class SubagentRouter {
   #runs = new Map(); #byChild = new Map(); #ended = new Map(); #reconcileAttempts = new Set(); #starting = new Map(); #closed = false;
-  constructor({ config, resolveModel, readAuthorization, readParentRoute = parent => ({ provider:parent.options?.provider, model:parent.options?.model }), readChildRoute, validateOptions=()=>{}, preflight, invokeNative, journal, now = Date.now, estimateContext = r => Buffer.byteLength(r.prompt,'utf8') + 8192 }) {
+  constructor({ config, resolveModel, readAuthorization, readChildRoute, validateOptions=()=>{}, preflight, invokeNative, journal, now = Date.now, estimateContext = r => Buffer.byteLength(r.prompt,'utf8') + 8192 }) {
     this.config = normalizeConfig(config); this.revision = digest(this.config);
-    Object.assign(this, { resolveModel, readAuthorization, readParentRoute, readChildRoute, validateOptions, preflight, invokeNative, journal, now, estimateContext });
+    Object.assign(this, { resolveModel, readAuthorization, readChildRoute, validateOptions, preflight, invokeNative, journal, now, estimateContext });
     const records=journal.load();
     this.ledger = new ReservationLedger(this.config.limits); this.ledger.recover(records);
     const latest=new Map(records.map(record=>[record.decisionId,record]));
@@ -52,48 +52,26 @@ export class SubagentRouter {
     if (this.#closed || !this.config.enabled) fail('ROUTER_DISABLED','Child router is disabled');
     if (parent.session.header?.origin === 'subagent' || parent.session.header?.parentSession !== undefined) fail('ROOT_ONLY','This version only routes root Agent delegations');
   }
-  captureParentRoute(parent) {
-    try {
-      const current = this.readParentRoute(parent);
-      if (current && typeof current.then === 'function') {
-        void Promise.resolve(current).catch(() => {});
-        fail('PARENT_ROUTE_UNAVAILABLE','Parent route reader must be synchronous');
-      }
-      return Object.freeze(resolvePresetTarget({ modelSource:'parent' },current));
-    } catch {
-      fail('PARENT_ROUTE_UNAVAILABLE','The current parent provider/model is unavailable');
-    }
-  }
-  assertParentRoute(parent,snapshot) {
-    if (snapshot === undefined) return; // Existing fixed presets do not depend on the parent route.
-    let current;
-    try { current = this.captureParentRoute(parent); }
-    catch { fail('STALE_PARENT_ROUTE','Parent provider/model became unavailable during preparation'); }
-    if (current.provider !== snapshot.provider || current.model !== snapshot.model) fail('STALE_PARENT_ROUTE','Parent provider/model changed; no replacement or replay is permitted');
-  }
   async plan(parent, raw, signal) {
     this.assertParent(parent,signal); const request = normalizeRequest(raw);
     if (request.policy_revision && request.policy_revision !== this.revision) fail('STALE_POLICY','Read delegation_routes again');
-    const presetId = request.preset_id ?? this.config.defaultPreset;
-    const preset = this.config.presets.find(item => item.id === presetId);
-    if (!preset) fail('NO_ROUTE','Selected preset does not exist; no fallback is permitted');
-    const parentRoute = preset.modelSource === 'parent' ? this.captureParentRoute(parent) : undefined;
-    const target = resolvePresetTarget(preset,parentRoute);
-    this.authorization(parent); this.assertParentRoute(parent,parentRoute);
+    const candidateId = request.candidate_id ?? this.config.defaultCandidateId;
+    const candidate = this.config.candidates.find(item => item.id === candidateId);
+    if (!candidate) fail('NO_ROUTE','Selected candidate does not exist; no fallback is permitted');
+    this.authorization(parent);
     const catalog = new Map();
     await this.prepareBounded(async combined => {
       let info;
-      try { info = await this.resolveModel(target.provider,target.model,combined); }
+      try { info = await this.resolveModel(candidate.provider,candidate.model,combined); }
       catch (e) { if (combined.aborted) throw e; /* A failed selected target cannot trigger another route. */ }
-      this.assertParentRoute(parent,parentRoute);
-      if (!combined.aborted) catalog.set(preset.id,normalizeMetadata(info));
+      if (!combined.aborted) catalog.set(candidate.id,normalizeMetadata(info));
     },signal);
-    this.assertParent(parent,signal); this.assertParentRoute(parent,parentRoute);
+    this.assertParent(parent,signal);
     const facts = { payload: { backend:'spawn', inputModalities:['text'], context:{tokens:this.estimateContext(request,parent)} } };
-    const proposal = request.preset_id === undefined ? undefined : { presetId:request.preset_id };
-    const route = Object.freeze(selectRoute(this.config,{facts,proposal,catalog,authorizedRoutes:this.authorization(parent),parentRoute}));
+    const proposal = request.candidate_id === undefined ? undefined : { candidateId:request.candidate_id };
+    const route = Object.freeze(selectRoute(this.config,{facts,proposal,catalog,authorizedRoutes:this.authorization(parent)}));
     const options = Object.freeze({ provider:route.provider, model:route.model, ...(route.effort === null ? {} : {reasoningEffort:route.effort}) });
-    const plan = Object.freeze({ request, route, options, facts, catalog, proposal, parentRoute });
+    const plan = Object.freeze({ request, route, options, facts, catalog, proposal });
     this.validateSelected(parent,plan);
     await this.prepareBounded(s => this.preflight(options,s),signal);
     this.assertParent(parent,signal);
@@ -117,10 +95,10 @@ export class SubagentRouter {
     const plan = await this.plan(parent,raw,exec.signal); const {request,route,options} = plan;
     this.assertParent(parent,exec.signal); this.validateSelected(parent,plan);
     const pid = parentId(parent), decisionId = randomUUID();
-    // Share the per-model quota across all presets for this exact provider/model.
+    // Share the per-model quota across all candidates for this exact provider/model.
     const modelId = JSON.stringify([route.provider,route.model]);
     const reservation = this.ledger.reserve(pid,modelId);
-    const base = { decisionId,parentId:pid,policyRevision:this.revision,modelId,presetId:route.presetId,provider:route.provider,model:route.model,effort:route.effort,kind:'subagent' };
+    const base = { decisionId,parentId:pid,policyRevision:this.revision,modelId,candidateId:route.candidateId,provider:route.provider,model:route.model,effort:route.effort,kind:'subagent' };
     const record = (status,extra={}) => this.journal.append({...base,status,time:this.now(),...extra});
     let invoked = false, tracking = false, acceptedChildId;
     try {
@@ -141,7 +119,7 @@ export class SubagentRouter {
       record('accepted',{childId:result.childId});
       const ended=this.#ended.get(pid+'\0'+result.childId);
       if (ended) { this.#ended.delete(pid+'\0'+result.childId); this.settle(pid,result.childId,ended); }
-      return { ...result, subagentId:result.childId, decisionId, presetId:route.presetId, selected:{provider:options.provider,model:options.model,effort:options.reasoningEffort ?? null}, routingReason:route.reason };
+      return { ...result, decisionId, candidateId:route.candidateId, selected:{provider:options.provider,model:options.model,effort:options.reasoningEffort ?? null}, routingReason:route.reason };
     } catch (error) {
       // Native errors can follow publication (e.g. post-execute failure): never blindly retry.
       if (invoked && error?.definitelyNotStarted !== true) {
@@ -176,14 +154,12 @@ export class SubagentRouter {
     finally { clearTimeout(timer); combined.removeEventListener('abort',onAbort); }
   }
   validateSelected(parent,plan) {
-    this.assertParentRoute(parent,plan.parentRoute);
     this.validateOptions(parent,plan.route);
     const routes=this.authorization(parent);
     let selected;
-    try { selected=selectRoute(this.config,{facts:plan.facts,proposal:plan.proposal,catalog:plan.catalog,authorizedRoutes:routes,parentRoute:plan.parentRoute}); }
-    catch (error) { if (error?.code === 'NO_ROUTE') fail('STALE_AUTHORIZATION','Selected preset is no longer authorized or supported'); throw error; }
-    if (selected.presetId !== plan.route.presetId || selected.provider !== plan.route.provider || selected.model !== plan.route.model || selected.effort !== plan.route.effort) fail('STALE_AUTHORIZATION','Selected preset changed during preparation');
-    this.assertParentRoute(parent,plan.parentRoute);
+    try { selected=selectRoute(this.config,{facts:plan.facts,proposal:plan.proposal,catalog:plan.catalog,authorizedRoutes:routes}); }
+    catch (error) { if (error?.code === 'NO_ROUTE') fail('STALE_AUTHORIZATION','Selected candidate is no longer authorized or supported'); throw error; }
+    if (selected.candidateId !== plan.route.candidateId || selected.provider !== plan.route.provider || selected.model !== plan.route.model || selected.effort !== plan.route.effort) fail('STALE_AUTHORIZATION','Selected candidate changed during preparation');
   }
   decisions(parent,options={}) {
     return decisionSnapshot(parent,this.journal.load(),{...options,readChildRoute:this.readChildRoute,recovered:this.recovered});

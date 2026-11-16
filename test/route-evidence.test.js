@@ -16,7 +16,7 @@ const {parentRouteSnapshot}=await import('../src/authorization.js');
 const {default:Service}=await import('../src/plugin.js');
 hook.deregister();
 test('route snapshots expose only actual route fields, not credentials/options',()=>{
- const config={provider:'actual',model:'actual-model',reasoningEffort:'high',apiKey:'DO_NOT_EXPOSE',preset:'unchanged'};
+ const config={provider:'actual',model:'actual-model',reasoningEffort:'high',apiKey:'DO_NOT_EXPOSE',candidate:'unchanged'};
  const parent={options:{provider:'old'},session:{requestHeader:()=>({config})}};
  assert.deepEqual(parentRouteSnapshot(parent),{provider:'actual',model:'actual-model',effort:'high'});
  assert.equal(JSON.stringify(parentRouteSnapshot(parent)).includes('DO_NOT_EXPOSE'),false);
@@ -25,7 +25,7 @@ test('delegation evidence reports concurrent parent-route changes rather than cl
  let route={provider:'parent',model:'one',reasoningEffort:'low'};
  const parent={id:'root',session:{header:{origin:'root'},requestHeader:()=>({config:route})}};
  const ctx={set(){},get(){},agents:{get:()=>parent}};
- const service=new Service(ctx,{policy:{enabled:false}});
+ const service=new Service(ctx,{ui:{schemaVersion:3,enabled:false,candidates:[]}});
  service.policy={enabled:true};
  service.manager={run:async()=>{route={...route,model:'externally-changed'};return {kind:'activation',childId:'child'}}};
  const value=await service.runWithParentEvidence({}, {agent:parent});
