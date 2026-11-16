@@ -8,6 +8,47 @@ window.__ModuleLoader__.load({
     const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     const stable = value => JSON.stringify(value, (_key, item) => item && !Array.isArray(item) && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
     const zh = {
+  "draftTitle": "生成候选草稿",
+  "draftIntro": "先选择生成模型及允许的委派执行档案，再输入要求。生成草稿不会更改下方手动配置或自动保存。",
+  "draftGenerator": "1 · 生成模型",
+  "draftGeneratorEffort": "生成模型思考档位",
+  "draftScope": "2 · 允许的委派执行档案",
+  "draftScopeHelp": "逐个模型勾选允许的思考档位，可多选；同一模型的不同档位是不同执行档案。目录变化后须核对选择并重新生成。",
+  "draftClearScope": "清空委派范围",
+  "draftRequirements": "3 · 生成要求（最多 8000 字符）",
+  "draftCost": "仅点击“生成草稿”时调用所选模型，可能产生费用。失败或取消不会自动重试，也不会切换模型。取消会请求中止并忽略迟到结果，但不能保证停止服务端调用或免除已产生费用。",
+  "draftGenerate": "生成草稿",
+  "draftGenerating": "正在生成；现有配置未改变…",
+  "draftValidating": "正在服务端校验草稿…",
+  "draftApplying": "正在应用并核对单次保存…",
+  "draftReady": "草稿未应用 · 请检查变更后确认",
+  "draftIdle": "尚未生成草稿",
+  "draftApplied": "草稿已应用并确认保存。",
+  "draftFailed": "草稿操作失败；没有自动重试。",
+  "draftUnavailable": "草稿服务不可用；仍可使用下方手动自动保存。",
+  "draftInputRequired": "请选择目录内完整的生成三元组、至少一个委派三元组，并填写不超过 8000 字符的要求。",
+  "draftProtected": "先处理未保存手动更改、保存回执、冲突或只读状态；不会覆盖这些更改。",
+  "draftStale": "目录、输入或连接已改变。此草稿已失效，必须重新生成。",
+  "draftConflict": "现有配置已编辑、保存或刷新，与生成时快照冲突。请核对后重新生成，不会覆盖手动更改。",
+  "draftInvalidResult": "草稿格式、默认项或执行档案不合法，或超出所选委派范围；已拒绝。",
+  "draftValidationChanged": "服务端校验改变了已确认的草稿内容；未应用，请重新生成并检查。",
+  "draftApplyFailed": "未确认草稿保存。请核对下方手动配置状态；不会重复写入。",
+  "draftSaveUnverified": "已提交应用 · 请核对下方保存状态",
+  "draftCancelled": "请求已在本地取消；迟到结果将忽略，不自动重试。",
+  "draftCancel": "取消并忽略结果",
+  "draftBefore": "现有配置 →",
+  "draftAfter": "草稿（未应用）",
+  "draftProfile": "执行档案 · provider / model / effort",
+  "draftName": "草稿候选名称",
+  "draftDescription": "草稿适用说明",
+  "draftDefault": "草稿默认候选",
+  "draftChooseDefault": "请选择草稿默认候选",
+  "draftConfirm": "我已核对现有 → 草稿变更，确认仅替换候选清单与默认项，保留启用状态、配额及审计设置。",
+  "draftApply": "校验并应用",
+  "draftRemove": "移除草稿候选",
+  "manualTitle": "手动编辑 · 自动保存",
+  "draftSelected": "已选择的执行档案",
+  "draftWarnings": "生成提示",
   "loading": "正在读取当前 Profile 配置…",
   "unavailable": "此 Profile 尚未提供路由配置，请先启用插件。",
   "readOnly": "当前配置为只读。",
@@ -21,6 +62,7 @@ window.__ModuleLoader__.load({
   "savedButNotLive": "已保存到当前 Profile，但有效配置被更高层覆盖；本次设置未生效。",
   "saveFailed": "保存未被宿主接受，草稿已保留。",
   "verifyFailed": "宿主已接受写入，但刷新尚未确认；请刷新核对，勿重复保存。",
+  "writeUncertain": "保存结果未知，可能已经写入。请刷新核对；在确认前禁止再次保存。",
   "connectionReset": "连接已重置，草稿已保留；请明确刷新或取消草稿后再编辑。",
   "conflict": "配置已被其他页面修改。草稿已保留，请取消草稿并重新读取后再编辑；不会自动重试。",
   "cancel": "取消草稿并重新读取",
@@ -45,8 +87,8 @@ window.__ModuleLoader__.load({
   "maxCreationsPerParent": "父会话累计创建上限",
   "metadataTimeoutMs": "元数据与预检超时（毫秒）",
   "executionEvidence": "保存或列出候选不会执行委派，也不能证明子 Agent 的实际路由；实际父作用域证据请通过 router_status 查询。",
-  "title": "委派候选模型",
-  "summary": "由用户维护候选模型：精确 provider / model / 思考档位，外加一个默认项；主 Agent 创建子 Agent 时直接选择其一，不新增选型调用，也不切换主 Agent。",
+  "title": "委派执行档案",
+  "summary": "AI 生成草稿或手动维护完整执行档案（provider / model / effort）及默认项；生成草稿经检查确认后应用，手动编辑自动保存。委派时仍由主 Agent 直接选择固定档案，不新增逐任务选型调用，也不切换主 Agent。",
   "candidates": "候选清单",
   "addCandidate": "添加候选",
   "name": "候选名称",
@@ -69,6 +111,47 @@ window.__ModuleLoader__.load({
   "originalConfiguration": "原始配置（只读）"
 };
     const en = {
+  "draftTitle": "Generate candidate draft",
+  "draftIntro": "Choose a generator and allowed delegation profiles, then enter requirements. Generation never changes or autosaves the manual configuration below.",
+  "draftGenerator": "1 · Generator model",
+  "draftGeneratorEffort": "Generator reasoning effort",
+  "draftScope": "2 · Allowed delegation profiles",
+  "draftScopeHelp": "Select allowed efforts per model; multiple efforts are allowed and are distinct execution profiles. Catalog invalidation requires reviewing selections and generating again.",
+  "draftClearScope": "Clear delegation scope",
+  "draftRequirements": "3 · Requirements (maximum 8000 characters)",
+  "draftCost": "Only clicking Generate draft calls the selected model and may incur charges. Failure or cancellation never retries or switches models. Cancellation requests abort and ignores late results; it cannot guarantee stopping server execution or avoiding charges already incurred.",
+  "draftGenerate": "Generate draft",
+  "draftGenerating": "Generating; existing configuration is unchanged…",
+  "draftValidating": "Validating the draft on the server…",
+  "draftApplying": "Applying and verifying one save…",
+  "draftReady": "Draft not applied · Review changes and confirm",
+  "draftIdle": "No draft generated yet",
+  "draftApplied": "Draft applied and save verified.",
+  "draftFailed": "Draft operation failed; no automatic retry occurred.",
+  "draftUnavailable": "Draft service is unavailable; manual autosave below remains available.",
+  "draftInputRequired": "Choose a complete generator triple and at least one delegation triple from the catalog, and enter requirements of at most 8000 characters.",
+  "draftProtected": "Resolve unsaved manual changes, unverified saves, conflicts or read-only state first; these changes will not be overwritten.",
+  "draftStale": "The catalog, inputs or connection changed. This draft is stale and must be regenerated.",
+  "draftConflict": "Existing configuration was edited, saved or refreshed after generation started. Review it and generate again; manual changes will not be overwritten.",
+  "draftInvalidResult": "Rejected: draft format, default or execution profiles are invalid or outside the selected delegation scope.",
+  "draftValidationChanged": "Server validation changed the confirmed draft; nothing was applied. Generate again and review.",
+  "draftApplyFailed": "Draft save was not verified. Check the manual configuration status below; no duplicate write will occur.",
+  "draftSaveUnverified": "Application submitted · Check save status below",
+  "draftCancelled": "Request cancelled locally; late results will be ignored without automatic retry.",
+  "draftCancel": "Cancel and ignore result",
+  "draftBefore": "Existing configuration →",
+  "draftAfter": "Draft (not applied)",
+  "draftProfile": "Execution profile · provider / model / effort",
+  "draftName": "Draft candidate name",
+  "draftDescription": "Draft usage description",
+  "draftDefault": "Draft default candidate",
+  "draftChooseDefault": "Choose a draft default",
+  "draftConfirm": "I reviewed the existing → draft changes and confirm replacing only candidates and the default, preserving enabled state, quotas and audit settings.",
+  "draftApply": "Validate and apply",
+  "draftRemove": "Remove draft candidate",
+  "manualTitle": "Manual editing · Automatic save",
+  "draftSelected": "Selected execution profiles",
+  "draftWarnings": "Generation warnings",
   "loading": "Reading profile configuration…",
   "unavailable": "Routing settings are unavailable in this profile. Enable the plugin first.",
   "readOnly": "This configuration is read-only.",
@@ -82,6 +165,7 @@ window.__ModuleLoader__.load({
   "savedButNotLive": "Saved to this profile, but a higher-priority configuration overrides it. These settings are not effective.",
   "saveFailed": "The host did not accept the save. Your draft was retained.",
   "verifyFailed": "The host accepted the write, but refresh has not verified it. Refresh to verify; do not save again.",
+  "writeUncertain": "The save outcome is unknown and may already be committed. Refresh to verify; saving again is blocked until verified.",
   "connectionReset": "The connection was reset. Your draft was retained. Explicitly refresh or discard the draft before editing.",
   "conflict": "Another page changed this configuration. Your draft was retained. Discard and reload before editing; no automatic retry will occur.",
   "cancel": "Discard draft and reload",
@@ -106,8 +190,8 @@ window.__ModuleLoader__.load({
   "maxCreationsPerParent": "Cumulative creation limit per parent",
   "metadataTimeoutMs": "Metadata and preflight timeout (milliseconds)",
   "executionEvidence": "Saving or listing candidates does not execute delegation or prove actual child routing; query actual parent-scoped evidence with router_status.",
-  "title": "Delegation candidates",
-  "summary": "Candidates are maintained by the user: exact provider / model / reasoning effort plus one default. The main Agent picks one directly at child creation; no extra selection calls and never switches the main Agent.",
+  "title": "Delegation execution profiles",
+  "summary": "Generate drafts with AI or manually maintain complete execution profiles (provider / model / effort) and a default. Review and confirm generated drafts before applying; manual edits are autosaved. The main Agent still picks a fixed profile directly for delegation, without extra per-task selection calls or switching the main Agent.",
   "candidates": "Candidate list",
   "addCandidate": "Add candidate",
   "name": "Candidate name",
@@ -321,7 +405,7 @@ window.__ModuleLoader__.load({
       constructor(ctx, t, timers = globalThis) {
         this.timers = timers; this.autosaveTimer = undefined; this.autosaveEpoch = 0; this.autosavePaused = false; this.composing = false;
         this.ctx = ctx; this.t = t; this.form = ctx.configForms.get(ENTRY); this.mirror = ctx.configForms.describe();
-        this.listeners = new Set(); this.disposed = false; this.generation = 0; this.connectionReset = false;
+        this.listeners = new Set(); this.disposed = false; this.generation = 0; this.editRevision = 0; this.generatedLock = undefined; this.connectionReset = false;
         this.saving = false; this.reloading = false; this.dirty = false; this.conflicted = false;
         this.error = ''; this.saved = false; this.savedButNotLive = false; this.receiptUnverified = false;
         this.read(); this.off = this.form.subscribe(() => this.read());
@@ -350,6 +434,7 @@ window.__ModuleLoader__.load({
         }, 600);
       }
       setComposing(value) {
+        if (this.generatedLock) return;
         this.composing = value;
         if (value) this.cancelAutosave(); else this.scheduleAutosave();
       }
@@ -357,20 +442,54 @@ window.__ModuleLoader__.load({
         const badDoc = invalidSource(this.host?.user) ? this.host.user : invalidSource(this.host?.value) ? this.host.value : undefined;
         const invalidOriginal = badDoc ? clone(Object.keys(badDoc).some(key => key !== 'policy' && !PLUGIN_KEYS.includes(key)) ||
           badDoc.auditFile !== undefined && typeof badDoc.auditFile !== 'string' ? badDoc : badDoc.policy !== undefined ? badDoc.policy : badDoc.ui) : undefined;
-        this.snapshot = { status: this.host?.status, writable: this.host?.writable, draft: this.draft, dirty: this.dirty, saving: this.saving, reloading: this.reloading, saved: this.saved, savedButNotLive: this.savedButNotLive, autosavePaused: this.autosavePaused, error: this.error, conflicted: this.conflicted, invalidSource: !!badDoc, invalidOriginal, auditFile: this.host?.value?.auditFile, receiptUnverified: this.receiptUnverified, connectionReset: this.connectionReset };
+        this.snapshot = { generatedBusy: !!this.generatedLock, revision: this.baseRevision, editRevision: this.editRevision, status: this.host?.status, writable: this.host?.writable, draft: this.draft, dirty: this.dirty, saving: this.saving, reloading: this.reloading, saved: this.saved, savedButNotLive: this.savedButNotLive, autosavePaused: this.autosavePaused, error: this.error, conflicted: this.conflicted, invalidSource: !!badDoc, invalidOriginal, auditFile: this.host?.value?.auditFile, receiptUnverified: this.receiptUnverified, connectionReset: this.connectionReset };
         for (const listener of this.listeners) listener();
       }
       subscribe = listener => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
       getSnapshot = () => this.snapshot;
-      editable() {
-        return !this.disposed && !this.conflicted && !this.saving && !this.reloading && !this.connectionReset && this.host.writable && this.host.status === 'ready' && !this.receiptUnverified && !invalidSource(this.host.value) && !invalidSource(this.host.user);
+      editable(owner) {
+        return (!this.generatedLock || this.generatedLock === owner) && !this.disposed && !this.conflicted && !this.saving && !this.reloading && !this.connectionReset && this.host.writable && this.host.status === 'ready' && !this.receiptUnverified && !invalidSource(this.host.value) && !invalidSource(this.host.user);
       }
       edit(update) {
         if (!this.editable()) return false;
         const next = clone(this.draft); update(next);
-        this.draft = next; this.dirty = true; this.saved = false;
+        this.editRevision++; this.draft = next; this.dirty = true; this.saved = false;
         if (!this.autosavePaused) { this.savedButNotLive = false; this.error = ''; }
         this.scheduleAutosave(); this.publish(); return true;
+      }
+      // A generation baseline includes local edits (even edit-and-revert), saves,
+      // connection generation and both host documents, not just the host revision.
+      captureGenerated() {
+        this.read();
+        if (!this.editable() || this.dirty || this.composing || this.autosavePaused || this.savedButNotLive) return;
+        return { revision: this.baseRevision, generation: this.generation, editRevision: this.editRevision,
+          draft: stable(this.draft), source: stable([this.host.value, this.host.user]) };
+      }
+      matchesGenerated(expected, owner) {
+        const current = this.form.getSnapshot();
+        return !!expected && this.editable(owner) && !this.dirty && !this.composing && !this.autosavePaused && !this.savedButNotLive &&
+          current.status === 'ready' && current.writable && !invalidSource(current.value) && !invalidSource(current.user) &&
+          expected.generation === this.generation && expected.editRevision === this.editRevision &&
+          expected.revision === this.baseRevision && expected.revision === current.revision &&
+          expected.draft === stable(this.draft) && expected.source === stable([current.value, current.user]);
+      }
+      lockGenerated(owner, expected) {
+        if (!this.matchesGenerated(expected, owner)) return false;
+        this.generatedLock = owner; this.cancelAutosave(); this.publish(); return true;
+      }
+      unlockGenerated(owner) {
+        if (this.generatedLock !== owner) return;
+        this.generatedLock = undefined; if (!this.disposed) this.publish();
+      }
+      async applyGenerated(result, expected, owner) {
+        // No editor.edit(), debounce or merge of service-controlled configuration.
+        // The final synchronous fence and one explicit save are inseparable.
+        if (!this.matchesGenerated(expected, owner)) return false;
+        const next = { ...clone(this.draft), candidates: clone(result.candidates), defaultCandidateId: result.defaultCandidateId };
+        if (!validDraft(next) || !next.candidates.length || !next.candidates.some(row => row.id === next.defaultCandidateId)) return false;
+        this.cancelAutosave(); this.generatedLock = undefined;
+        this.editRevision++; this.draft = next; this.dirty = true; this.saved = false;
+        return await this.save();
       }
       addCandidate() {
         if (this.draft.candidates.length >= 128) return false;
@@ -399,8 +518,8 @@ window.__ModuleLoader__.load({
         return true;
       }
       async reload() {
-        if (this.saving || this.reloading || this.disposed) return;
-        this.cancelAutosave(); this.composing = false;
+        if (this.saving || this.reloading || this.disposed || this.generatedLock) return;
+        this.editRevision++; this.cancelAutosave(); this.composing = false;
         const generation = this.generation;
         this.reloading = true; this.publish();
         try {
@@ -421,11 +540,12 @@ window.__ModuleLoader__.load({
       }
       async save() {
         this.cancelAutosave();
-        if (this.disposed || this.composing) return false;
+        if (this.disposed || this.composing || this.generatedLock) return false;
         this.read();
         if (this.disposed || this.saving || this.reloading || this.connectionReset || !this.dirty || !this.host.writable || this.host.status !== 'ready' || this.receiptUnverified) return false;
         if (this.conflicted || this.form.getSnapshot().revision !== this.baseRevision) { this.conflicted = true; this.publish(); return false; }
         if (!this.editable() || !validDraft(this.draft)) { this.error = this.t('invalidDraft'); this.publish(); return false; }
+        this.editRevision++;
         const desired = clone(this.draft), revision = this.baseRevision, generation = this.generation;
         // Only a verified receipt (or explicit reload) releases automatic saving.
         this.autosavePaused = true;
@@ -434,8 +554,18 @@ window.__ModuleLoader__.load({
         try {
           const response = await this.ctx.remote.settings.mutate(ENTRY, [ { op: 'set', path: ['ui'], value: desired } ], revision);
           if (this.disposed || generation !== this.generation) return false;
-          if (!response.ok) { this.error = response.error.message; this.conflicted = response.error.code === 'settings/conflict'; this.receiptUnverified = false; this.pendingDesired = undefined; }
-          else accepted = true;
+          if (response?.ok === true) accepted = true;
+          else {
+            const code = response?.error?.code;
+            // SettingsController classifies pre-write refusal as settings/rejected
+            // or settings/conflict (and invalid payload as gateway/bad-request).
+            // ClientRemote also returns ok:false for transport failures; in
+            // particular gateway/internal can mean a timeout OR a committed write
+            // whose namespace vanished. Never interpret these as a no-write receipt.
+            const rejected = response?.ok === false && ['settings/rejected', 'settings/conflict', 'gateway/bad-request'].includes(code);
+            this.error = typeof response?.error?.message === 'string' ? response.error.message : this.t(rejected ? 'saveFailed' : 'writeUncertain');
+            if (rejected) { this.conflicted = code === 'settings/conflict'; this.receiptUnverified = false; this.pendingDesired = undefined; }
+          }
           await this.mirror.load();
           if (this.disposed || generation !== this.generation) return false;
           const current = this.form.getSnapshot();
@@ -448,16 +578,292 @@ window.__ModuleLoader__.load({
       dispose() { if (this.disposed) return; this.cancelAutosave(); this.disposed = true; this.generation++; this.off(); this.listeners.clear(); }
     }
 
+    const routeKey = route => JSON.stringify([route.provider, route.model, route.effort]);
+    const routeOnly = route => ({ provider: route.provider, model: route.model, effort: route.effort });
+    class DraftGenerator {
+      constructor(ctx, editor, catalog, t = editor.t) {
+        this.ctx = ctx; this.editor = editor; this.catalog = catalog; this.t = t;
+        this.listeners = new Set(); this.disposed = false; this.epoch = 0; this.catalogRevision = 0;
+        this.input = { generator: undefined, scope: [], requirements: '' };
+        this.status = 'idle'; this.error = ''; this.draft = undefined; this.confirmed = false; this.warnings = [];
+        this.offEditor = editor.subscribe(() => {
+          if (this.status === 'applying' && editor.getSnapshot().saving) this.writeSubmitted = true;
+          if (this.baseline && this.status !== 'applying' && !editor.matchesGenerated(this.baseline, this)) this.invalidate('draftConflict', 'conflict');
+        });
+        this.offCatalog = catalog.subscribe(() => {
+          this.catalogRevision++;
+          // Our own settings write emits settings/document-updated. Once that
+          // write is submitted, catalog changes must not discard its receipt or
+          // turn a confirmed save into a stale-draft error. The baseline is retired
+          // after every apply attempt, so this draft cannot be submitted again.
+          if (this.status === 'applying' && this.writeSubmitted || this.applyAttempted && !this.baseline) { this.publish(); return; }
+          if (this.baseline || this.draft || this.busy()) this.invalidate('draftStale'); else this.publish();
+        });
+        this.publish();
+      }
+      subscribe = listener => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
+      getSnapshot = () => this.snapshot;
+      publish() {
+        if (this.disposed) return;
+        this.snapshot = { input: clone(this.input), draft: clone(this.draft), before: clone(this.before), warnings: [...this.warnings],
+          status: this.status, applyAttempted: !!this.applyAttempted, error: this.error, errorCode: this.errorCode, confirmed: this.confirmed, busy: this.busy(), available: this.available() };
+        for (const listener of this.listeners) listener();
+      }
+      available() { return typeof this.ctx.remote?.delegationRouter?.generateDraft === 'function' && typeof this.ctx.remote?.delegationRouter?.validateDraft === 'function'; }
+      busy() { return ['generating', 'validating', 'applying'].includes(this.status); }
+      routeAllowed(route) {
+        if (!route || Object.keys(route).some(key => !['provider', 'model', 'effort'].includes(key))) return false;
+        const model = this.catalog.find(route.provider, route.model);
+        return !!model && catalogEfforts(model, this.t).some(option => option.id === route.effort);
+      }
+      inputsValid() {
+        const { generator, scope, requirements } = this.input;
+        return this.routeAllowed(generator) && Array.isArray(scope) && scope.length > 0 && scope.length <= 128 &&
+          scope.every(route => this.routeAllowed(route)) && new Set(scope.map(routeKey)).size === scope.length &&
+          typeof requirements === 'string' && requirements.trim().length > 0 && requirements.length <= 8000;
+      }
+      startRequest(epoch) {
+        const controller = typeof globalThis.AbortController === 'function' ? new globalThis.AbortController() : undefined;
+        this.requestAbort = { epoch, controller }; return controller?.signal;
+      }
+      abortRequest() {
+        const request = this.requestAbort; this.requestAbort = undefined; request?.controller?.abort();
+      }
+      finishRequest(epoch) { if (this.requestAbort?.epoch === epoch) this.requestAbort = undefined; }
+      invalidate(key = 'draftStale', status = 'stale') {
+        if (this.disposed) return;
+        this.epoch++; this.baseline = undefined; this.confirmed = false; this.status = status; this.error = this.t(key);
+        this.abortRequest();
+        this.editor.unlockGenerated(this); this.publish();
+      }
+      changeInput(update) {
+        if (this.disposed || this.busy()) return false;
+        const next = clone(this.input); update(next);
+        if (stable(next) === stable(this.input)) return true;
+        this.input = next;
+        if (this.draft || this.baseline) this.invalidate();
+        else { this.status = 'idle'; this.error = ''; this.publish(); }
+        return true;
+      }
+      selectGenerator(key) {
+        if (this.disposed || this.busy()) return false;
+        for (const group of this.catalog.getSnapshot().groups) for (const model of group.models) {
+          const pair = { provider: group.id, model: model.id };
+          if (modelKey(pair) !== key || !this.catalog.find(pair.provider, pair.model)) continue;
+          const efforts = catalogEfforts(model, this.t);
+          const effort = efforts.some(row => row.id === null) ? null : efforts.some(row => row.id === model.reasoning?.defaultEffort) ? model.reasoning.defaultEffort : '';
+          return this.changeInput(next => { next.generator = { ...pair, effort }; });
+        }
+        return false;
+      }
+      setGeneratorEffort(value) {
+        if (!this.input.generator) return false;
+        const route = { ...this.input.generator, effort: value };
+        return this.routeAllowed(route) && this.changeInput(next => { next.generator = route; });
+      }
+      setScope(routes) {
+        if (!Array.isArray(routes) || routes.length > 128 || !routes.every(route => this.routeAllowed(route)) || new Set(routes.map(routeKey)).size !== routes.length) return false;
+        return this.changeInput(next => { next.scope = clone(routes); });
+      }
+      toggleScope(route, selected) {
+        if (!this.routeAllowed(route)) return false;
+        const remaining = this.input.scope.filter(item => routeKey(item) !== routeKey(route));
+        return this.setScope(selected ? [...remaining, routeOnly(route)] : remaining);
+      }
+      setRequirements(value) {
+        if (typeof value !== 'string' || value.length > 8000) return false;
+        return this.changeInput(next => { next.requirements = value; });
+      }
+      normalizeResult(value, scope) {
+        // Only these two fields may cross into the editor. Top-level diagnostics
+        // from validateDraft are allowed, but unknown persistent candidate keys are not.
+        const result = { candidates: value?.candidates, defaultCandidateId: value?.defaultCandidateId };
+        if (!Array.isArray(result.candidates) || !result.candidates.length || !validDraft({ ...emptyDraft(), ...result, enabled: true }) ||
+            result.candidates.some(row => {
+              const target = /^scope-[1-9][0-9]*$/.test(row.id) && scope[Number(row.id.slice(6)) - 1];
+              return !target || routeKey(target) !== routeKey(row);
+            })) throw Error(this.t('draftInvalidResult'));
+        result.candidates = result.candidates.map(row => ({ ...clone(row), description: row.description ?? '' }));
+        return result;
+      }
+      unwrap(response) {
+        if (response && Object.hasOwn(response, 'ok')) {
+          if (typeof response.ok !== 'boolean') throw Error(this.t('draftInvalidResult'));
+          if (!response.ok) { const error = Error(response.error?.message ?? this.t('draftFailed')); error.code = response.error?.code; throw error; }
+          return response.value;
+        }
+        return response;
+      }
+      current(epoch, inputKey, catalogRevision, draftKey) {
+        return !this.disposed && epoch === this.epoch && inputKey === stable(this.input) && catalogRevision === this.catalogRevision &&
+          this.editor.matchesGenerated(this.baseline, this) && (draftKey === undefined || draftKey === stable(this.draft));
+      }
+      async generate() {
+        if (this.disposed || this.busy()) return false;
+        if (!this.available() || !this.inputsValid()) { this.error = this.t(this.available() ? 'draftInputRequired' : 'draftUnavailable'); this.publish(); return false; }
+        const baseline = this.editor.captureGenerated();
+        if (!baseline) { this.error = this.t('draftProtected'); this.publish(); return false; }
+        this.baseline = baseline; this.before = clone(this.editor.getSnapshot().draft);
+        this.draft = undefined; this.warnings = []; this.confirmed = false; this.applyAttempted = false; this.writeSubmitted = false; this.error = ''; this.errorCode = undefined; this.status = 'generating';
+        const epoch = ++this.epoch, input = clone(this.input), inputKey = stable(input), catalogRevision = this.catalogRevision;
+        if (!this.editor.lockGenerated(this, baseline)) { this.invalidate('draftConflict', 'conflict'); return false; }
+        this.publish();
+        try {
+          if (!this.current(epoch, inputKey, catalogRevision)) return false;
+          const response = this.unwrap(await this.ctx.remote.delegationRouter.generateDraft(input, this.startRequest(epoch)));
+          if (!this.current(epoch, inputKey, catalogRevision)) { if (epoch === this.epoch) this.invalidate('draftConflict', 'conflict'); return false; }
+          const draft = this.normalizeResult(response, input.scope);
+          if (!Array.isArray(response.warnings) || response.warnings.some(warning => typeof warning !== 'string')) throw Error(this.t('draftInvalidResult'));
+          this.draft = draft; this.warnings = [...response.warnings]; this.status = 'ready'; this.publish(); return true;
+        } catch (error) {
+          if (!this.disposed && epoch === this.epoch) { this.status = 'error'; this.error = error?.message ?? String(error); this.errorCode = error?.code; this.publish(); }
+          return false;
+        } finally { this.finishRequest(epoch); if (epoch === this.epoch) this.editor.unlockGenerated(this); }
+      }
+      editableDraft() { return !this.disposed && !this.busy() && !!this.draft && !!this.baseline && this.editor.matchesGenerated(this.baseline, this); }
+      editCandidate(id, patch) {
+        if (!this.editableDraft() || !patch || Object.keys(patch).some(key => !['name', 'description'].includes(key)) ||
+            Object.entries(patch).some(([key, value]) => typeof value !== 'string' || value.length > (key === 'name' ? 120 : 1000))) return false;
+        const row = this.draft.candidates.find(candidate => candidate.id === id); if (!row) return false;
+        Object.assign(row, patch); this.confirmed = false; this.status = 'ready'; this.error = ''; this.publish(); return true;
+      }
+      removeCandidate(id) {
+        if (!this.editableDraft() || !this.draft.candidates.some(row => row.id === id)) return false;
+        this.draft.candidates = this.draft.candidates.filter(row => row.id !== id);
+        if (this.draft.defaultCandidateId === id) this.draft.defaultCandidateId = undefined;
+        this.confirmed = false; this.status = 'ready'; this.error = ''; this.publish(); return true;
+      }
+      setDefault(id) {
+        if (!this.editableDraft() || !this.draft.candidates.some(row => row.id === id)) return false;
+        this.draft.defaultCandidateId = id; this.confirmed = false; this.status = 'ready'; this.error = ''; this.publish(); return true;
+      }
+      confirm(value) { if (!this.editableDraft()) return false; this.confirmed = value === true; this.publish(); return true; }
+      canApply() {
+        if (!this.confirmed || !this.editableDraft() || !this.inputsValid()) return false;
+        try { this.normalizeResult(this.draft, this.input.scope); return true; } catch { return false; }
+      }
+      async validateAndApply() {
+        if (!this.canApply() || !this.available()) return false;
+        const epoch = ++this.epoch, inputKey = stable(this.input), catalogRevision = this.catalogRevision, draftKey = stable(this.draft);
+        const request = { scope: clone(this.input.scope), ...clone(this.draft) };
+        this.status = 'validating'; this.error = '';
+        if (!this.editor.lockGenerated(this, this.baseline)) { this.invalidate('draftConflict', 'conflict'); return false; }
+        this.publish();
+        try {
+          if (!this.current(epoch, inputKey, catalogRevision, draftKey)) return false;
+          const response = this.unwrap(await this.ctx.remote.delegationRouter.validateDraft(request, this.startRequest(epoch)));
+          this.finishRequest(epoch);
+          if (!this.current(epoch, inputKey, catalogRevision, draftKey)) { if (epoch === this.epoch) this.invalidate('draftConflict', 'conflict'); return false; }
+          const validated = this.normalizeResult(response, request.scope);
+          if (stable(validated) !== stable(this.normalizeResult(request, request.scope))) throw Error(this.t('draftValidationChanged'));
+          this.status = 'applying'; this.applyAttempted = true; this.publish();
+          if (!this.current(epoch, inputKey, catalogRevision, draftKey)) { if (epoch === this.epoch) this.invalidate('draftConflict', 'conflict'); return false; }
+          const applied = await this.editor.applyGenerated(validated, this.baseline, this);
+          if (this.disposed || epoch !== this.epoch) return false;
+          this.baseline = undefined; this.confirmed = false;
+          this.status = applied ? 'applied' : 'error';
+          this.error = applied ? '' : this.editor.getSnapshot().error || this.t('draftApplyFailed');
+          this.publish(); return applied;
+        } catch (error) {
+          if (!this.disposed && epoch === this.epoch) { this.status = 'error'; this.confirmed = false; this.error = error?.message ?? String(error); this.errorCode = error?.code; this.publish(); }
+          return false;
+        } finally { this.finishRequest(epoch); if (epoch === this.epoch) this.editor.unlockGenerated(this); }
+      }
+      cancel() {
+        if (this.disposed || this.status === 'applying') return false;
+        this.invalidate('draftCancelled', 'cancelled'); return true;
+      }
+      resetConnection() { this.invalidate('draftStale'); }
+      dispose() {
+        if (this.disposed) return;
+        this.disposed = true; this.epoch++; this.baseline = undefined; this.abortRequest();
+        this.offEditor(); this.offCatalog(); this.editor.unlockGenerated(this); this.listeners.clear();
+      }
+    }
+
     // Use the Host theme and native form semantics, not an independent app shell.
+    const paragraphStyle = { maxWidth: '76ch', overflowWrap: 'anywhere' };
     const fieldStyle = { display: 'grid', gap: 8, minWidth: 0 };
     const inputStyle = { width: '100%', minWidth: 0, minHeight: 44, boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-secondary, #777)', color: 'inherit', background: 'var(--dsw-alias-background-primary, transparent)', font: 'inherit' };
     const buttonStyle = { ...inputStyle, width: 'auto', cursor: 'pointer' };
-    function RouterPage({ editor, catalog, t, view }) {
+    function DraftWizard({ generator, editor, catalog, t }) {
+      const state = React.useSyncExternalStore(generator.subscribe, generator.getSnapshot, generator.getSnapshot);
+      const editorState = React.useSyncExternalStore(editor.subscribe, editor.getSnapshot, editor.getSnapshot);
+      const catalogState = React.useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
+      const blocked = state.busy || !editor.editable(generator) || editorState.dirty || editorState.autosavePaused;
+      const route = state.input.generator;
+      const model = route && catalog.find(route.provider, route.model);
+      const efforts = catalogEfforts(model, t);
+      const currentModelKey = route ? modelKey(route) : '';
+      const button = (key, action, disabled) => h('button', { type: 'button', style: buttonStyle, disabled, onClick: action }, t(key));
+      const label = (key, child) => h('label', { style: fieldStyle }, h('span', null, t(key)), child);
+      const profile = item => item.provider + ' / ' + item.model + ' / ' + (item.effort === null ? 'null' : item.effort || '—');
+      const stage = (key, children) => h('fieldset', { style: { minWidth: 0, margin: '16px 0', padding: 16, borderRadius: 8, border: '1px solid var(--dsw-alias-border-secondary, #777)' } }, h('legend', null, t(key)), children);
+      const textInput = (key, row, field, maxLength) => h(field === 'description' ? 'textarea' : 'input', { style: field === 'description' ? { ...inputStyle, minHeight: 104, resize: 'vertical' } : inputStyle, ...(field === 'description' ? { rows: 4 } : {}), 'aria-label': t(key) + ' · ' + row.id,
+        value: row[field] ?? '', maxLength, disabled: blocked || !generator.editableDraft(), onChange: event => generator.editCandidate(row.id, { [field]: event.target.value }) });
+      const statusKey = { idle: 'draftIdle', generating: 'draftGenerating', ready: 'draftReady', validating: 'draftValidating', applying: 'draftApplying', applied: 'draftApplied', error: 'draftFailed', stale: 'draftStale', conflict: 'draftConflict', cancelled: 'draftCancelled' }[state.status];
+      return h('section', { 'data-draft-generator': true, style: { minWidth: 0, margin: '24px 0' } },
+        h('h3', null, t('draftTitle')), h('p', { style: paragraphStyle }, t('draftIntro')),
+        !state.available ? h('p', { role: 'status' }, t('draftUnavailable')) : null,
+        !editor.editable(generator) || editorState.dirty || editorState.autosavePaused ? h('p', { role: 'status' }, t('draftProtected')) : null,
+        stage('draftGenerator', [
+          label('draftGenerator', h('select', { style: inputStyle, 'aria-label': t('draftGenerator'), disabled: blocked || catalogState.status !== 'ready', value: currentModelKey, onChange: event => generator.selectGenerator(event.target.value) },
+            h('option', { value: '', disabled: true }, t('chooseModel')),
+            route && !model ? h('option', { value: currentModelKey, disabled: true }, profile(route)) : null,
+            catalogState.groups.map(group => h('optgroup', { key: group.id, label: group.name + ' (' + group.id + ')', disabled: catalogState.failures.some(failure => failure.id === group.id) },
+              group.models.map(item => h('option', { key: item.id, value: modelKey({ provider: group.id, model: item.id }) }, item.name + ' — ' + item.id)))))),
+          label('draftGeneratorEffort', h('select', { style: inputStyle, 'aria-label': t('draftGeneratorEffort'), disabled: blocked || !model, value: route && route.effort !== '' ? effortKey(route.effort) : '',
+            onChange: event => { const option = efforts.find(item => effortKey(item.id) === event.target.value); if (option) generator.setGeneratorEffort(option.id); } },
+            h('option', { value: '', disabled: true }, t('chooseEffort')),
+            route && route.effort !== '' && !efforts.some(item => item.id === route.effort) ? h('option', { value: effortKey(route.effort), disabled: true }, String(route.effort) + ' — ' + t('catalogUnverified')) : null,
+            efforts.map(item => h('option', { key: effortKey(item.id), value: effortKey(item.id) }, item.name + (item.id === null ? '' : ' (' + item.id + ')'))))),
+          route ? h('code', { style: { overflowWrap: 'anywhere' } }, profile(route)) : null
+        ]),
+        stage('draftScope', [h('p', { style: paragraphStyle }, t('draftScopeHelp')),
+          catalogState.status !== 'ready' ? h('p', { role: 'status' }, t('catalogUnverified')) : null,
+          catalogState.groups.map(group => h('div', { key: group.id }, h('h4', null, group.name + ' (' + group.id + ')'),
+            group.models.map(item => h('details', { key: item.id }, h('summary', { style: { minHeight: 44, cursor: 'pointer', overflowWrap: 'anywhere' } }, item.name + ' — ' + item.id),
+              catalogEfforts(catalog.find(group.id, item.id), t).map(effort => {
+                const tuple = { provider: group.id, model: item.id, effort: effort.id };
+                return h('label', { key: effortKey(effort.id), style: { display: 'flex', alignItems: 'center', gap: 12, minHeight: 44, overflowWrap: 'anywhere' } },
+                  h('input', { type: 'checkbox', style: { minWidth: 24, minHeight: 24 }, disabled: blocked || !generator.routeAllowed(tuple), checked: state.input.scope.some(value => routeKey(value) === routeKey(tuple)), onChange: event => generator.toggleScope(tuple, event.target.checked) }), profile(tuple));
+              }))))),
+          h('p', { style: paragraphStyle }, t('draftSelected') + ': ' + state.input.scope.length + ' / 128'),
+          h('ul', null, state.input.scope.map(item => h('li', { key: routeKey(item), style: { overflowWrap: 'anywhere' } }, profile(item)))),
+          button('draftClearScope', () => generator.setScope([]), blocked || !state.input.scope.length)
+        ]),
+        label('draftRequirements', h('textarea', { style: { ...inputStyle, minHeight: 120, resize: 'vertical' }, 'aria-label': t('draftRequirements'), maxLength: 8000, value: state.input.requirements, disabled: blocked, onChange: event => generator.setRequirements(event.target.value) })),
+        h('p', { style: paragraphStyle }, state.input.requirements.length + ' / 8000'), h('p', { style: paragraphStyle }, t('draftCost')),
+        h('div', { style: { display: 'flex', gap: 12, flexWrap: 'wrap' } },
+          button('draftGenerate', () => generator.generate(), blocked || !state.available || !generator.inputsValid()),
+          state.busy && state.status !== 'applying' ? button('draftCancel', () => generator.cancel(), false) : null),
+        h('p', { role: 'status', 'aria-live': 'polite', 'aria-atomic': true }, t(statusKey)),
+        state.error ? h('p', { role: 'alert', style: { overflowWrap: 'anywhere' } }, state.error) : null,
+        state.warnings.length ? h('div', { role: 'status' }, h('h4', null, t('draftWarnings')), h('ul', null, state.warnings.map((warning, index) => h('li', { key: index, style: { overflowWrap: 'anywhere' } }, warning)))) : null,
+        state.draft ? h(React.Fragment, null,
+          h('h4', null, t('draftBefore')),
+          h('ul', null, state.before.candidates.map(row => h('li', { key: row.id, style: { overflowWrap: 'anywhere' } }, row.name + ' · ' + profile(row) + ' · ' + (row.description ?? '') + (row.id === state.before.defaultCandidateId ? ' · ' + t('defaultCandidate') : '')))),
+          h('h4', null, t(state.status === 'applied' ? 'draftApplied' : state.applyAttempted ? 'draftSaveUnverified' : 'draftAfter')),
+          h('div', { style: { overflowX: 'auto', maxWidth: '100%' }, tabIndex: 0, role: 'region', 'aria-label': t('draftAfter') },
+            h('table', { style: { width: '100%', minWidth: 720, borderCollapse: 'collapse', tableLayout: 'fixed' } },
+              h('thead', null, h('tr', null, ['draftName','draftProfile','draftDescription','draftRemove'].map(key => h('th', { key, scope: 'col', style: { textAlign: 'start', padding: 8 } }, t(key))))),
+              h('tbody', null, state.draft.candidates.map(row => h('tr', { key: row.id },
+                h('td', { style: { padding: 8, verticalAlign: 'top' } }, textInput('draftName', row, 'name', 120), h('code', { style: { overflowWrap: 'anywhere' } }, row.id)),
+                h('td', { style: { padding: 8, verticalAlign: 'top', overflowWrap: 'anywhere' } }, profile(row)),
+                h('td', { style: { padding: 8, verticalAlign: 'top' } }, textInput('draftDescription', row, 'description', 1000)),
+                h('td', { style: { padding: 8, verticalAlign: 'top' } }, button('draftRemove', () => generator.removeCandidate(row.id), blocked || !generator.editableDraft()))))))),
+          label('draftDefault', h('select', { style: inputStyle, 'aria-label': t('draftDefault'), value: state.draft.defaultCandidateId ?? '', disabled: blocked || !generator.editableDraft(), onChange: event => generator.setDefault(event.target.value) },
+            h('option', { value: '', disabled: true }, t('draftChooseDefault')), state.draft.candidates.map(row => h('option', { key: row.id, value: row.id }, row.name + ' — ' + row.id)))),
+          h('label', { style: { display: 'flex', alignItems: 'start', gap: 12, margin: '16px 0' } },
+            h('input', { type: 'checkbox', style: { minWidth: 24, minHeight: 24 }, 'aria-label': t('draftConfirm'), checked: state.confirmed, disabled: blocked || !generator.editableDraft(), onChange: event => generator.confirm(event.target.checked) }), t('draftConfirm')),
+          button('draftApply', () => generator.validateAndApply(), blocked || !state.available || !generator.canApply())) : null);
+    }
+    function RouterPage({ editor, catalog, generator, t, view }) {
       const state = React.useSyncExternalStore(editor.subscribe, editor.getSnapshot, editor.getSnapshot);
       const catalogState = React.useSyncExternalStore(catalog?.subscribe ?? (() => () => {}), catalog?.getSnapshot ?? (() => emptyCatalog), catalog?.getSnapshot ?? (() => emptyCatalog));
       if (view === 'summary') return h('span', null, t('summary'));
       const ui = state.draft ?? emptyDraft();
-      const busy = state.status !== 'ready' || !state.writable || state.saving || state.reloading || state.connectionReset || state.receiptUnverified || state.invalidSource;
+      const busy = state.generatedBusy || state.status !== 'ready' || !state.writable || state.saving || state.reloading || state.connectionReset || state.receiptUnverified || state.invalidSource;
       const disabled = busy || state.conflicted;
       const edit = update => editor.edit(update);
       const button = (key, action, off = false) => h('button', { type: 'button', style: buttonStyle, disabled: off, onClick: action }, t(key));
@@ -494,43 +900,66 @@ window.__ModuleLoader__.load({
         ]));
       });
       return h('section', { style: { color: 'var(--dsw-alias-label-primary, inherit)', padding: '16px 0', minWidth: 0, maxWidth: '100%', lineHeight: 1.6 } },
-        h('h2', null, t('title')), h('p', null, t('summary')),
+        h('h2', null, t('title')), h('p', { style: paragraphStyle }, t('summary')),
         state.status !== 'ready' ? h('p', { role: 'status' }, t(state.status === 'loading' ? 'loading' : 'unavailable')) : null,
         state.status === 'ready' && !state.writable ? h('p', { role: 'status' }, t('readOnly')) : null,
         state.invalidSource ? group(t('invalidSourceTitle'), [h('p', { role: 'alert' }, t('invalidSource')), h('details', null, h('summary', null, t('originalConfiguration')), json(state.invalidOriginal))]) : null,
+        generator && catalog ? h(DraftWizard, { generator, editor, catalog, t }) : null,
+        h('h3', null, t('manualTitle')),
         h('div', { 'data-autosave': true, style: { position: 'sticky', top: 0, zIndex: 1, padding: '12px 0', background: 'var(--dsw-alias-background-primary, #fff)', borderBottom: '1px solid var(--dsw-alias-border-secondary, #777)' } },
           h('div', { role: 'status', 'aria-live': 'polite', 'aria-atomic': true }, t(state.saving ? 'saving' : state.savedButNotLive ? 'savedButNotLive' : state.error || state.conflicted ? 'autosaveFailed' : state.dirty ? validDraft(ui) ? 'autosavePending' : 'autosaveIncomplete' : state.saved ? 'saved' : 'autosave')),
           state.conflicted ? h('p', { role: 'alert' }, t('conflict')) : null,
           state.error ? h('p', { role: 'alert' }, state.error) : null,
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 8 } },
             state.error && state.dirty && !state.receiptUnverified && !state.connectionReset && !state.conflicted ? button('retry', () => editor.save(), disabled || !validDraft(ui)) : null,
-            button(state.dirty && !state.receiptUnverified || state.connectionReset ? 'cancel' : 'refresh', () => editor.reload(), state.saving || state.reloading))),
+            button(state.dirty && !state.receiptUnverified || state.connectionReset ? 'cancel' : 'refresh', () => editor.reload(), state.saving || state.reloading || state.generatedBusy))),
         grid([input('enabled', ui.enabled, value => edit(next => { next.enabled = value; }), 'checkbox'),
           h('label', { style: fieldStyle }, h('span', null, t('defaultCandidate')), h('select', { style: inputStyle, 'aria-label': t('defaultCandidate'), value: ui.defaultCandidateId ?? '', disabled, onChange: event => { const draft = editor.getSnapshot().draft; if (event.target.value === '' && !draft.enabled) edit(next => { delete next.defaultCandidateId; }); else if (draft.candidates.filter(candidate => candidate.id === event.target.value).length === 1) edit(next => { next.defaultCandidateId = event.target.value; }); } },
             h('option', { value: '', disabled: !!ui.enabled }, t('chooseDefault')),
             ui.defaultCandidateId && !ui.candidates.some(candidate => candidate.id === ui.defaultCandidateId) ? h('option', { value: ui.defaultCandidateId, disabled: true }, ui.defaultCandidateId) : null,
             ui.candidates.filter(candidate => candidate.id && ui.candidates.filter(other => other.id === candidate.id).length === 1).map(candidate => h('option', { key: candidate.id, value: candidate.id }, (candidate.name || candidate.id) + ' — ' + candidate.id))))]),
-        h('p', null, t('authority')),
-        h('h3', null, t('catalog')), h('p', null, t('catalogHelp')),
-        button('catalogRefresh', () => catalog?.load(), !catalog || catalogState.status === 'loading'),
+        h('p', { style: paragraphStyle }, t('authority')),
+        h('h3', null, t('catalog')), h('p', { style: paragraphStyle }, t('catalogHelp')),
+        button('catalogRefresh', () => { if (!editor.getSnapshot().generatedBusy) return catalog?.load(); }, state.generatedBusy || !catalog || catalogState.status === 'loading'),
         catalogState.status === 'loading' ? h('p', { role: 'status' }, t('catalogLoading')) : null,
         catalogState.status === 'error' ? h('p', { role: 'alert' }, t('catalogFailed') + ' ' + catalogState.error) : null,
-        catalogState.failures.length ? h('div', { role: 'alert' }, h('p', null, t('catalogPartial')), h('ul', null, catalogState.failures.map(failure => h('li', { key: failure.id }, failure.name + ' (' + failure.id + '): ' + failure.message)))) : null,
+        catalogState.failures.length ? h('div', { role: 'alert' }, h('p', { style: paragraphStyle }, t('catalogPartial')), h('ul', null, catalogState.failures.map(failure => h('li', { key: failure.id }, failure.name + ' (' + failure.id + '): ' + failure.message)))) : null,
         catalogState.status === 'ready' && !catalogState.groups.some(provider => provider.models.length) ? h('p', { role: 'status' }, t('catalogEmpty')) : null,
-        h('h3', null, t('candidates')), rows.length ? rows : h('p', null, t('noCandidates')),
+        h('h3', null, t('candidates')), rows.length ? rows : h('p', { style: paragraphStyle }, t('noCandidates')),
         h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12 } }, button('addCandidate', () => editor.addCandidate(), disabled || ui.candidates.length >= 128)),
         h('details', { style: { margin: '24px 0' } }, h('summary', null, t('advanced')),
           group(t('limits'), grid(['maxPendingStarts','maxActivePerModel','maxCreationsPerParent','metadataTimeoutMs'].map(key => input(key, ui.limits[key], value => edit(next => { next.limits[key] = value; }), 'number')))),
-          h('h3', null, t('auditFile')), h('code', { style: { overflowWrap: 'anywhere' } }, state.auditFile ?? '—'), h('p', null, t('auditHelp'))),
-        h('p', null, t('executionEvidence'))
+          h('h3', null, t('auditFile')), h('code', { style: { overflowWrap: 'anywhere' } }, state.auditFile ?? '—'), h('p', { style: paragraphStyle }, t('auditHelp'))),
+        h('p', { style: paragraphStyle }, t('executionEvidence'))
       );
     }
 
+    function draftRemoteDescriptors() {
+      // Browser codecs need only parse(); no bundled Zod dependency or raw RPC.
+      // Server codecs perform the complete data-only/range validation again.
+      const codec = name => ({ mode: 'strict', typeSymbol: 'dsh-delegation-router#' + name, create: () => ({ parse(value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Invalid configuration draft envelope');
+        return value;
+      } }) });
+      return ['generateDraft', 'validateDraft'].map(method => ({
+        id: 'dsh-delegation-router#delegationRouter/' + method, service: 'delegationRouter', namespace: 'delegationRouter', method,
+        invocation: { kind: 'direct' }, parameters: [{ name: 'request', wire: 'request', source: 'json', codec: codec(method + 'Request') }],
+        cancellation: { parameter: 'signal' }, result: codec(method + 'Result')
+      }));
+    }
     function apply(ctx) {
       const t = ctx.locale.bind(NS);
       ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'delegation-router: locale');
       const editor = new RouterEditor(ctx, t);
       const catalog = new ModelCatalog(ctx);
+      const generator = new DraftGenerator(ctx, editor, catalog, t);
+      if (typeof ctx.remote.$mount === 'function') ctx.effect(() => {
+        let disposed = false, release;
+        const pending = ctx.remote.$mount({ package: 'dsh-delegation-router', descriptors: draftRemoteDescriptors() }).then(async off => {
+          if (disposed) await off(); else { release = off; generator.publish(); }
+        }).catch(() => { if (!disposed) { generator.error = t('draftUnavailable'); generator.publish(); } });
+        return async () => { disposed = true; await pending; await release?.(); };
+      }, 'delegation-router: configuration draft remote');
       ctx.effect(() => {
         const warnUnsaved = event => {
           const state = editor.getSnapshot();
@@ -541,13 +970,14 @@ window.__ModuleLoader__.load({
       }, 'delegation-router: unsaved changes warning');
       ctx.effect(() => () => editor.dispose(), 'delegation-router: editor subscription');
       ctx.effect(() => () => catalog.dispose(), 'delegation-router: native catalog subscriptions');
-      ctx.on('connection/reset', () => { editor.resetConnection(); catalog.resetConnection(); });
+      ctx.effect(() => () => generator.dispose(), 'delegation-router: draft generator');
+      ctx.on('connection/reset', () => { generator.resetConnection(); editor.resetConnection(); catalog.resetConnection(); });
       void catalog.load();
-      const component = props => h(RouterPage, { ...props, editor, catalog, t });
+      const component = props => h(RouterPage, { ...props, editor, catalog, generator, t });
       for (const [name, key] of [['plugins.bundle.config', 'dsh-delegation-router'], ['plugins.row.config', 'dsh-delegation-router#delegation-router']]) {
         ctx.effect(() => ctx.slots.inject(name, () => ctx.slots.register({ name, key }, component)), 'delegation-router: ' + name);
       }
     }
-    return { inject: ['slots', 'locale', 'configForms', 'remote', 'remote.settings', 'remote.session'], apply, RouterEditor, RouterPage, ModelCatalog, normalizeCatalog, modelKey, catalogEfforts, effortKey, CATALOG_EVENTS, emptyDraft, draftFrom, normalizeAckUi, validDraft, dictionaries: { zh, en } };
+    return { inject: ['slots', 'locale', 'configForms', 'remote', 'remote.settings', 'remote.session'], apply, draftRemoteDescriptors, RouterEditor, RouterPage, DraftGenerator, DraftWizard, routeKey, ModelCatalog, normalizeCatalog, modelKey, catalogEfforts, effortKey, CATALOG_EVENTS, emptyDraft, draftFrom, normalizeAckUi, validDraft, dictionaries: { zh, en } };
   }
 });

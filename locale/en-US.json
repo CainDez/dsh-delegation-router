@@ -1,10 +1,10 @@
 {
   "meta": {
-    "title": "Delegation Router",
-    "description": "User-maintained exact candidate models (provider / model / reasoning effort plus one default); the main Agent picks one directly at child creation. Autosaved settings; respects host authorization and never switches the parent Agent."
+    "title": "Delegation execution profiles",
+    "description": "Generate drafts with AI or manually maintain complete execution profiles (provider / model / effort) and a default. Review and confirm generated drafts before applying; manual edits are autosaved. The main Agent still picks a fixed profile directly for delegation, without extra per-task selection calls or switching the main Agent. Host authorization always applies."
   },
   "config": {
-    "ui": "Candidate model configuration (canonical ui entry; host authorization still applies)",
+    "ui": "Delegation execution profile configuration (canonical ui entry; host authorization still applies)",
     "auditFile": "Absolute audit path, unique per running profile"
   }
 }

@@ -4,7 +4,7 @@ import { normalizeConfig } from './config.js';
 // Preserve the raw ui source through native Settings. The schema must never
 // default, relabel or silently rewrite an unsupported configuration source.
 export const RouterConfig = z.object({
-  ui: z.any().default(undefined).volatile().description('固定候选入口 ui：每个候选固定 provider/model 与精确 effort（null 表示明确无档位），启用时必须提供有效 defaultCandidateId；未提供 ui 时为空禁用配置。显式提供（含空对象）必须是 schemaVersion 3；候选必须提供固定 provider/model/effort。'),
+  ui: z.any().default(undefined).volatile().description('执行档案入口 ui：每个候选固定 provider/model 与精确 effort（null 表示明确无档位）；支持 AI 生成草稿、校验确认后应用，亦可手动编辑。启用时必须提供有效 defaultCandidateId；未提供 ui 时为空禁用配置。显式提供（含空对象）必须是 schemaVersion 3；候选必须提供固定 provider/model/effort。'),
   auditFile: z.string().description('审计文件的绝对路径，每个 Profile 独占；不覆盖既有日志或锁。'),
 });
 

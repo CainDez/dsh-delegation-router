@@ -11,6 +11,7 @@ import { authorizationProjection, createAuthorizationReader, parentRouteSnapshot
 import { createNativeInvoker } from './native-adapter.js';
 import { createChildReaders, createLifecycleHandlers } from './lifecycle.js';
 import { mountGuidance, authorizedCandidateChoices } from './guidance.js';
+import { mountDraftRemote, invokeDraftRemote } from './draft-remote.js';
 
 const requestParameters = {
   prompt: { type: 'string', required: true, description: 'Complete standalone text task for the child.' },
@@ -81,7 +82,11 @@ export class SubagentRouterService extends Service {
     return {...result,parentRouteBefore:before,parentRouteAfter:after,parentRouteUnchanged:JSON.stringify(before)===JSON.stringify(after)};
   }
 
+  generateDraft(request, signal) { return invokeDraftRemote(this, 'generateDraft', request, signal); }
+  validateDraft(request, signal) { return invokeDraftRemote(this, 'validateDraft', request, signal); }
+
   async [Service.init]() {
+    await mountDraftRemote(this);
     const handle=await this.ctx.sessionProjections.register(authorizationProjection);
     const readAuthorization=createAuthorizationReader(handle);
     const pipeline=new ToolExecutionPipeline(this.ctx);

@@ -1,6 +1,6 @@
 {
   "name": "dsh-delegation-router",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "private": true,
   "repository": {
     "type": "git",
@@ -17,7 +17,7 @@
     "delegation",
     "model-routing"
   ],
-  "description": "DSH delegation candidates with exact provider/model/effort validation and autosaved settings; preserves host authorization and the parent model.",
+  "description": "DSH execution profiles with exact provider/model/effort, AI-generated configuration drafts, explicit validated apply and manual editing; preserves host authorization and the parent model.",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -51,6 +51,7 @@
     "@deepseek-ai/schemastery": "~3.19.0",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
     "@deepseek-ai/dsh-subagent": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.3",
     "zod": "4.6.6"
   },
   "peerDependenciesMeta": {
@@ -67,6 +68,9 @@
       "optional": true
     },
     "@deepseek-ai/dsh-subagent": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-typert-protocol": {
       "optional": true
     },
     "zod": {

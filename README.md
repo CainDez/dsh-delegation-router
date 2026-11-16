@@ -4,7 +4,30 @@
 
 ## 配置
 
-在插件设置中添加候选：名称、固定 provider/model、真实思考档位和一句适用说明。完整有效的修改在停止输入约 600ms 后自动保存；冲突或写入结果不确定时停止自动重试。
+每个候选都是一个完整执行档案：名称、固定 `provider / model / effort` 和适用说明。同一模型可以配置多个真实思考等级，主 Agent 选择整个档案，运行时不临时改档。
+
+### AI 配置向导
+
+1. 从 DSH 原生模型目录选择**生成配置的模型及其真实思考等级**。生成模型不必属于委派范围。
+2. 选择**允许的委派范围**：为每个模型勾选允许的真实思考等级；只有目录明确无可配置等级的模型才使用 `null`。
+3. 输入使用要求，例如「机械任务优先低投入，常规编码用均衡投入，复杂排障用高投入；不知道能力或价格时明确提示，不编造」。
+4. 点击生成：仅这时发起一次所选模型调用（可能产生费用），只发送范围与使用要求，不发送当前会话正文、审计日志或凭据。模型只能引用范围中的档案 ID，不能编造 provider、模型或等级。
+5. 查看草稿、警告及与现有配置的差异；可编辑名称、适用说明、默认项或删除档案。**生成和编辑草稿不会自动保存或启用路由。**
+6. 明确确认后点击校验并应用：服务端重新核对当前模型元数据及范围，通过后仅替换候选和默认项，保留启用状态、配额和审计路径，并验证宿主保存回执。
+
+生成要求与范围冲突、目录不可用、非法返回、超时、连接重置或配置发生变化时，不自动换模型、重试或覆盖当前配置。输入/范围/目录变化后需重新生成。向导输入和未应用草稿仅保留在当前页面内存中，不写入运行策略。范围是本次草稿的硬边界；应用后仍可在手动编辑区明确调整，实际委派仍受宿主授权限制。
+
+### 手动编辑
+
+原有手动编辑入口保留。手动区完整有效的修改在停止输入约 600ms 后自动保存；冲突或写入结果不确定时停止自动重试。未保存的手动修改必须先处理，不能被生成草稿覆盖。
+
+### 思考等级建议
+
+- 档位以所选 provider/model 的真实目录为准，不跨模型比较同名档位；不虚构 `medium` 或 `default`。目录查询失败不等于无档位。
+- 任务边界清晰、机械转换且容易验证时考虑较低投入；常规实现考虑均衡投入；多约束、高不确定性、难验证问题考虑较高投入。只有目录/用户提供了可靠语义，才能作这种映射，不能把列表顺序当作档位排名。
+- 不默认最高档，不因文件多、输入长或回答要详细就自动升档；高等级不能替代资料、测试、权限或独立复核。
+- 默认生成少量职责清晰的档案（通常 3–5 个，范围很小时可以更少），不是每个模型每个档位都要生成。模型能力、价格或速度没有可靠依据时明确说明未知。
+- 适用说明建议包含「适用、不适用、选择依据」。这是主 Agent 的选择参考，不是强制任务分类引擎；程序强制保证的是结构、范围和真实等级，不能证明自然语言要求已全部满足。
 
 配置入口只有 `ui` 和可选的绝对路径 `auditFile`。`ui.schemaVersion` 为 3，默认关闭且候选池为空。启用时必须显式指定清单内的 `defaultCandidateId`。
 
@@ -41,10 +64,10 @@
 npm test
 npm run check
 npm pack --ignore-scripts
-node scripts/verify-pack.js ./dsh-delegation-router-0.9.1.tgz
-dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.9.1/dsh-delegation-router-0.9.1.tgz
+node scripts/verify-pack.js ./dsh-delegation-router-0.10.0.tgz
+dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.10.0/dsh-delegation-router-0.10.0.tgz
 ```
 
-安装前检查未结委派并备份配置。配置验收优先通过文件和宿主接口核对，无需 Computer Use。宿主库隔离检查可运行 `scripts/verify-host-api.js`、`scripts/verify-host-model-catalog.js`、`scripts/verify-host-lifecycle.js`，参数为对应宿主的 package.json 路径；它们不连接运行 Profile、不创建 Agent、不发起推理。
+安装前检查未结委派并备份配置。配置验收优先通过文件和宿主接口核对，无需 Computer Use。宿主库隔离检查可运行 `scripts/verify-host-api.js`、`scripts/verify-host-model-catalog.js`、`scripts/verify-host-lifecycle.js`、`scripts/verify-host-draft.js`，参数为对应宿主的 package.json 路径；它们不连接运行 Profile、不创建 Agent、不发起推理。
 
 采用 [MIT 许可证](<LICENSE>)。[包清单](<package.json>)的 `private: true` 防止误发 npm，不影响归档安装。
