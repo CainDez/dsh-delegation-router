@@ -283,7 +283,7 @@ test('mount without remote registry is inert; registered disposal closes the dra
   try {
     const effects = [], registered = []; const { llm } = harness();
     const host = { ctx: { llm, get: () => ({ register(value) { registered.push(value); } }), effect(factory) { effects.push(factory()); } } };
-    await mountDraftRemote(host); assert.ok(host.draftService instanceof DraftService); assert.equal(registered.length, 1); assert.equal(effects.length, 1);
-    effects[0](); assert.equal(host.draftService.closed, true); await assert.rejects(host.draftService.generateDraft(request()), coded('GENERATOR_CLOSED'));
+    await mountDraftRemote(host); assert.ok(host.draftService instanceof DraftService); assert.equal(registered.length, 1); assert.equal(effects.length, 2);
+    for (const dispose of effects.reverse()) dispose(); assert.equal(host.draftService.closed, true); await assert.rejects(host.draftService.generateDraft(request()), coded('GENERATOR_CLOSED'));
   } finally { hooks.deregister(); }
 });

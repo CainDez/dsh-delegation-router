@@ -281,10 +281,10 @@ test('beforeunload warns only for unfinished work and unregisters on plugin clea
   cleanup(); assert.equal(handlers.size, 0); assert.equal(removed, 1); assert.equal(clock.pending.size, 0);
 });
 
-test('saved-but-overridden stays paused and sticky UI has no normal save or unsafe retry', async t => {
+test('saved-but-overridden stays paused and status UI has no normal save or unsafe retry', async t => {
   const h = harness(t);
   const status = page(h).find(node => node?.props?.['data-autosave']);
-  assert.equal(status.props.style.position, 'sticky'); assert.equal(status.props.style.top, 0);
+  assert.equal(status.props.style.position, undefined); // status must not cover inputs on small screens
   assert.equal(button(h, 'save'), undefined); assert.equal(button(h, 'retry'), undefined);
   assert.ok(flatten(status).some(node => node?.props?.role === 'status' && node.props['aria-live'] === 'polite'));
   h.mutate = async row => { const ui = copy(row.ops[0].value); ui.candidates[0].effort = 'higher-layer'; h.ack(row, { ui }); return { ok: true }; };

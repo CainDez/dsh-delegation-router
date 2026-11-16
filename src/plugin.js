@@ -84,6 +84,7 @@ export class SubagentRouterService extends Service {
 
   generateDraft(request, signal) { return invokeDraftRemote(this, 'generateDraft', request, signal); }
   validateDraft(request, signal) { return invokeDraftRemote(this, 'validateDraft', request, signal); }
+  modelCatalog(signal) { return invokeDraftRemote(this, 'modelCatalog', undefined, signal); }
 
   async [Service.init]() {
     await mountDraftRemote(this);

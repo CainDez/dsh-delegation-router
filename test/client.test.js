@@ -53,7 +53,7 @@ function flatten(node) {
   if (node === null || node === undefined || node === false) return [];
   if (Array.isArray(node)) return node.flatMap(flatten);
   if (typeof node === 'string' || typeof node === 'number') return [node];
-  if (node.type === 'function') return flatten(node.type(node.props));
+  if (typeof node.type === 'function') return flatten(node.type(node.props));
   return [node, ...flatten(node.props?.children)];
 }
 
@@ -349,8 +349,10 @@ test('candidate list renders native fields without inheritance or template contr
 test('brief evidence warning leaves quotas audit and ordinary save behavior intact', async () => {
   const auditFile = 'C:/audit/preserved-route.jsonl', h = host({ value: { ui: stored(), auditFile } });
   const root = plugin.RouterPage({ editor: h.editor, t, view: 'page' }), nodes = flatten(root);
-  assert.ok(root.props.children.some(node => node?.type === 'p' && node.props.children.includes(t('executionEvidence'))));
-  assert.ok(nodes.includes(auditFile)); assert.ok(nodes.includes(t('auditHelp')));
+  const advanced = nodes.find(node => node?.type === 'details' && node.props.children[0]?.props?.children?.includes(t('advanced')));
+  assert.ok(flatten(advanced).includes(t('executionEvidence')));
+  assert.equal(nodes.includes(auditFile), false); // read-only path is not an actionable setting here
+  assert.equal(h.editor.getSnapshot().auditFile, auditFile);
   for (const [key, value] of Object.entries({ maxPendingStarts: 3, maxActivePerModel: 4, maxCreationsPerParent: 5, metadataTimeoutMs: 6000 })) {
     const control = nodes.find(node => node?.type === 'input' && node.props['aria-label'] === t(key));
     assert.equal(control.props.disabled, false); control.props.onChange({ target: { value: String(value) } });

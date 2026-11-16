@@ -172,7 +172,8 @@ test('both languages expose responsive native controls and honest capability bou
     if (language === 'zh') { assert.match(dictionary.authority, /仅传文本，不转发图片/); assert.match(dictionary.executionEvidence, /保存或列出.*不会执行.*不能证明.*实际路由.*router_status/); }
     else { assert.match(dictionary.authority, /text-only.*does not forward images/); assert.match(dictionary.executionEvidence, /Saving or listing.*does not execute.*prove actual child routing.*router_status/); }
     const root = plugin.RouterPage({ editor: h.editor, catalog: h.catalog, t: translate, view: 'page' });
-    assert.ok(root.props.children.some(node => node?.type === 'p' && node.props.children.includes(dictionary.executionEvidence)));
+    const advanced = flatten(root).find(node => node?.type === 'details' && node.props.children[0]?.props?.children?.includes(dictionary.advanced));
+    assert.ok(flatten(advanced).includes(dictionary.executionEvidence));
   }
   assert.equal(h.mutations.length, 0); h.dispose();
 });

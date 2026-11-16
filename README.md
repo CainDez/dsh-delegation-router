@@ -8,6 +8,8 @@
 
 ### AI 配置向导
 
+页面顶部统一显示模型加载状态、模型数和刷新时间。点击“刷新模型”重新读取宿主目录；每个 Provider 独立限时 5 秒，某个 Provider 挂起或失败不会阻止正常 Provider 的模型选择。连接或整体读取超过 20 秒会显示错误并允许重试，迟到结果不会覆盖新目录。刷新不发起推理、不改变配置。
+
 1. 从 DSH 原生模型目录选择**生成配置的模型及其真实思考等级**。生成模型不必属于委派范围。
 2. 选择**允许的委派范围**：为每个模型勾选允许的真实思考等级；只有目录明确无可配置等级的模型才使用 `null`。
 3. 输入使用要求，例如「机械任务优先低投入，常规编码用均衡投入，复杂排障用高投入；不知道能力或价格时明确提示，不编造」。
@@ -19,7 +21,9 @@
 
 ### 手动编辑
 
-原有手动编辑入口保留。手动区完整有效的修改在停止输入约 600ms 后自动保存；冲突或写入结果不确定时停止自动重试。未保存的手动修改必须先处理，不能被生成草稿覆盖。
+手动编辑和高级配额默认折叠，移除了重复的目录说明和不可编辑的审计路径展示（原值仍保留）。委派范围支持搜索，档位直接勾选，不再逐个展开模型。未保存的手动编辑不会禁用生成模型、范围和要求输入，但必须保存或明确放弃后才可生成。
+
+手动区完整有效的修改在停止输入约 600ms 后自动保存；冲突或写入结果不确定时停止自动重试。未保存的手动修改必须先处理，不能被生成草稿覆盖。
 
 ### 思考等级建议
 
@@ -64,8 +68,8 @@
 npm test
 npm run check
 npm pack --ignore-scripts
-node scripts/verify-pack.js ./dsh-delegation-router-0.10.0.tgz
-dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.10.0/dsh-delegation-router-0.10.0.tgz
+node scripts/verify-pack.js ./dsh-delegation-router-0.10.1.tgz
+dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.10.1/dsh-delegation-router-0.10.1.tgz
 ```
 
 安装前检查未结委派并备份配置。配置验收优先通过文件和宿主接口核对，无需 Computer Use。宿主库隔离检查可运行 `scripts/verify-host-api.js`、`scripts/verify-host-model-catalog.js`、`scripts/verify-host-lifecycle.js`、`scripts/verify-host-draft.js`，参数为对应宿主的 package.json 路径；它们不连接运行 Profile、不创建 Agent、不发起推理。

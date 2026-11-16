@@ -5,18 +5,26 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
     const NS = 'delegationRouter', ENTRY = 'delegation-router';
+    // This namespace is mounted by this plugin: a required inject would deadlock startup.
+    // Cordis get() is the optional, caller-scoped lookup; direct property access throws in a fiber.
+    const routerRemote = ctx => typeof ctx.get === 'function' ? ctx.get('remote.delegationRouter') : ctx.remote?.delegationRouter;
     const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     const stable = value => JSON.stringify(value, (_key, item) => item && !Array.isArray(item) && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
     const zh = {
+  "scopeSearch": "搜索模型或 Provider",
+  "catalogReady": "模型已更新",
+  "catalogTimeout": "读取超过 20 秒，请重试；现有配置未改变。",
+  "providers": "个 Provider",
+  "models": "个模型",
   "draftTitle": "生成候选草稿",
-  "draftIntro": "先选择生成模型及允许的委派执行档案，再输入要求。生成草稿不会更改下方手动配置或自动保存。",
+  "draftIntro": "选生成模型 → 勾选委派范围 → 填写要求。生成后确认应用，不会自动覆盖配置。",
   "draftGenerator": "1 · 生成模型",
-  "draftGeneratorEffort": "生成模型思考档位",
+  "draftGeneratorEffort": "思考档位",
   "draftScope": "2 · 允许的委派执行档案",
-  "draftScopeHelp": "逐个模型勾选允许的思考档位，可多选；同一模型的不同档位是不同执行档案。目录变化后须核对选择并重新生成。",
+  "draftScopeHelp": "勾选允许委派的档位，可多选。支持搜索模型。",
   "draftClearScope": "清空委派范围",
   "draftRequirements": "3 · 生成要求（最多 8000 字符）",
-  "draftCost": "仅点击“生成草稿”时调用所选模型，可能产生费用。失败或取消不会自动重试，也不会切换模型。取消会请求中止并忽略迟到结果，但不能保证停止服务端调用或免除已产生费用。",
+  "draftCost": "生成可能产生费用；失败不重试、不换模型。取消会请求中止，但已发生的费用仍可能计入。",
   "draftGenerate": "生成草稿",
   "draftGenerating": "正在生成；现有配置未改变…",
   "draftValidating": "正在服务端校验草稿…",
@@ -26,8 +34,8 @@ window.__ModuleLoader__.load({
   "draftApplied": "草稿已应用并确认保存。",
   "draftFailed": "草稿操作失败；没有自动重试。",
   "draftUnavailable": "草稿服务不可用；仍可使用下方手动自动保存。",
-  "draftInputRequired": "请选择目录内完整的生成三元组、至少一个委派三元组，并填写不超过 8000 字符的要求。",
-  "draftProtected": "先处理未保存手动更改、保存回执、冲突或只读状态；不会覆盖这些更改。",
+  "draftInputRequired": "请选择生成模型及档位、至少一个委派档位，并填写要求。",
+  "draftProtected": "可继续选择模型和填写要求。生成前请先保存或放弃手动更改，并处理下方保存异常。",
   "draftStale": "目录、输入或连接已改变。此草稿已失效，必须重新生成。",
   "draftConflict": "现有配置已编辑、保存或刷新，与生成时快照冲突。请核对后重新生成，不会覆盖手动更改。",
   "draftInvalidResult": "草稿格式、默认项或执行档案不合法，或超出所选委派范围；已拒绝。",
@@ -46,7 +54,7 @@ window.__ModuleLoader__.load({
   "draftConfirm": "我已核对现有 → 草稿变更，确认仅替换候选清单与默认项，保留启用状态、配额及审计设置。",
   "draftApply": "校验并应用",
   "draftRemove": "移除草稿候选",
-  "manualTitle": "手动编辑 · 自动保存",
+  "manualTitle": "手动编辑（自动保存）",
   "draftSelected": "已选择的执行档案",
   "draftWarnings": "生成提示",
   "loading": "正在读取当前 Profile 配置…",
@@ -71,10 +79,10 @@ window.__ModuleLoader__.load({
   "remove": "删除",
   "id": "ID",
   "catalog": "DSH 原生模型目录",
-  "catalogRefresh": "刷新模型目录",
+  "catalogRefresh": "刷新模型",
   "catalogLoading": "正在读取模型目录…",
   "catalogEmpty": "目录中暂无可用模型。",
-  "catalogFailed": "目录读取失败；现有配置保留，不能据此判断模型已删除。",
+  "catalogFailed": "模型读取失败，请重试。现有配置保持不变。",
   "catalogPartial": "部分 Provider 目录读取失败；仅可选择成功返回的模型，失败 Provider 的旧配置不视为不存在。",
   "catalogMissing": "已保存的模型不在当前成功目录中；值保持不变，请确认后明确重新选择。",
   "catalogUnverified": "尚未确认此模型的当前目录信息；现有模型与档位保持不变。",
@@ -88,7 +96,7 @@ window.__ModuleLoader__.load({
   "metadataTimeoutMs": "元数据与预检超时（毫秒）",
   "executionEvidence": "保存或列出候选不会执行委派，也不能证明子 Agent 的实际路由；实际父作用域证据请通过 router_status 查询。",
   "title": "委派执行档案",
-  "summary": "AI 生成草稿或手动维护完整执行档案（provider / model / effort）及默认项；生成草稿经检查确认后应用，手动编辑自动保存。委派时仍由主 Agent 直接选择固定档案，不新增逐任务选型调用，也不切换主 Agent。",
+  "summary": "选择模型与思考档位，生成并确认配置；也可展开手动编辑。",
   "candidates": "候选清单",
   "addCandidate": "添加候选",
   "name": "候选名称",
@@ -111,15 +119,20 @@ window.__ModuleLoader__.load({
   "originalConfiguration": "原始配置（只读）"
 };
     const en = {
+  "scopeSearch": "Search models or providers",
+  "catalogReady": "Models updated",
+  "catalogTimeout": "Loading exceeded 20 seconds. Retry; existing settings are unchanged.",
+  "providers": "providers",
+  "models": "models",
   "draftTitle": "Generate candidate draft",
-  "draftIntro": "Choose a generator and allowed delegation profiles, then enter requirements. Generation never changes or autosaves the manual configuration below.",
+  "draftIntro": "Choose a generator, select allowed profiles, then enter requirements. Review and confirm before applying.",
   "draftGenerator": "1 · Generator model",
-  "draftGeneratorEffort": "Generator reasoning effort",
+  "draftGeneratorEffort": "Reasoning effort",
   "draftScope": "2 · Allowed delegation profiles",
-  "draftScopeHelp": "Select allowed efforts per model; multiple efforts are allowed and are distinct execution profiles. Catalog invalidation requires reviewing selections and generating again.",
+  "draftScopeHelp": "Select allowed efforts for delegation. Search to narrow the list.",
   "draftClearScope": "Clear delegation scope",
   "draftRequirements": "3 · Requirements (maximum 8000 characters)",
-  "draftCost": "Only clicking Generate draft calls the selected model and may incur charges. Failure or cancellation never retries or switches models. Cancellation requests abort and ignores late results; it cannot guarantee stopping server execution or avoiding charges already incurred.",
+  "draftCost": "Generation may incur charges. No automatic retries or model substitution. Cancellation requests abort but may not prevent charges already incurred.",
   "draftGenerate": "Generate draft",
   "draftGenerating": "Generating; existing configuration is unchanged…",
   "draftValidating": "Validating the draft on the server…",
@@ -129,8 +142,8 @@ window.__ModuleLoader__.load({
   "draftApplied": "Draft applied and save verified.",
   "draftFailed": "Draft operation failed; no automatic retry occurred.",
   "draftUnavailable": "Draft service is unavailable; manual autosave below remains available.",
-  "draftInputRequired": "Choose a complete generator triple and at least one delegation triple from the catalog, and enter requirements of at most 8000 characters.",
-  "draftProtected": "Resolve unsaved manual changes, unverified saves, conflicts or read-only state first; these changes will not be overwritten.",
+  "draftInputRequired": "Choose a generator and effort, select at least one delegation effort, and enter requirements.",
+  "draftProtected": "You can prepare inputs. Before generating, save or discard manual edits and resolve save, conflict or read-only state below.",
   "draftStale": "The catalog, inputs or connection changed. This draft is stale and must be regenerated.",
   "draftConflict": "Existing configuration was edited, saved or refreshed after generation started. Review it and generate again; manual changes will not be overwritten.",
   "draftInvalidResult": "Rejected: draft format, default or execution profiles are invalid or outside the selected delegation scope.",
@@ -149,7 +162,7 @@ window.__ModuleLoader__.load({
   "draftConfirm": "I reviewed the existing → draft changes and confirm replacing only candidates and the default, preserving enabled state, quotas and audit settings.",
   "draftApply": "Validate and apply",
   "draftRemove": "Remove draft candidate",
-  "manualTitle": "Manual editing · Automatic save",
+  "manualTitle": "Manual editing (autosave)",
   "draftSelected": "Selected execution profiles",
   "draftWarnings": "Generation warnings",
   "loading": "Reading profile configuration…",
@@ -174,10 +187,10 @@ window.__ModuleLoader__.load({
   "remove": "Delete",
   "id": "ID",
   "catalog": "Native DSH model catalog",
-  "catalogRefresh": "Refresh model catalog",
+  "catalogRefresh": "Refresh models",
   "catalogLoading": "Reading model catalog…",
   "catalogEmpty": "No models are available in the catalog.",
-  "catalogFailed": "Catalog loading failed. Existing configuration is retained; this does not mean its models were removed.",
+  "catalogFailed": "Model loading failed. Retry; existing settings are unchanged.",
   "catalogPartial": "Some provider catalogs failed. Only successfully returned models can be selected; saved models from failed providers are not considered missing.",
   "catalogMissing": "This saved model is absent from the successfully loaded catalog. Its value is retained until you explicitly choose another model.",
   "catalogUnverified": "Current catalog information for this model is unverified. Its saved model and effort values are retained.",
@@ -191,7 +204,7 @@ window.__ModuleLoader__.load({
   "metadataTimeoutMs": "Metadata and preflight timeout (milliseconds)",
   "executionEvidence": "Saving or listing candidates does not execute delegation or prove actual child routing; query actual parent-scoped evidence with router_status.",
   "title": "Delegation execution profiles",
-  "summary": "Generate drafts with AI or manually maintain complete execution profiles (provider / model / effort) and a default. Review and confirm generated drafts before applying; manual edits are autosaved. The main Agent still picks a fixed profile directly for delegation, without extra per-task selection calls or switching the main Agent.",
+  "summary": "Choose models and reasoning efforts, generate a draft and confirm. Manual editing is also available.",
   "candidates": "Candidate list",
   "addCandidate": "Add candidate",
   "name": "Candidate name",
@@ -324,7 +337,8 @@ window.__ModuleLoader__.load({
     const effortKey = effort => JSON.stringify(effort);
     const emptyCatalog = { status: 'idle', groups: [], failures: [], error: '' };
     class ModelCatalog {
-      constructor(ctx) {
+      constructor(ctx, timers = globalThis, timeoutMs = 20000) {
+        this.timers = timers; this.timeoutMs = timeoutMs;
         this.ctx = ctx; this.generation = 0; this.disposed = false; this.listeners = new Set(); this.offs = [];
         this.snapshot = emptyCatalog;
         if (typeof ctx.remote?.$on === 'function') for (const event of CATALOG_EVENTS) {
@@ -342,17 +356,28 @@ window.__ModuleLoader__.load({
         this.inFlight = flight;
         flight.promise = Promise.resolve().then(() => {
           if (this.disposed || generation !== this.generation) return;
-          if (typeof this.ctx.remote?.session?.modelCatalog !== 'function') throw Error('Native model catalog is unavailable');
-          return this.ctx.remote.session.modelCatalog();
+          const remote = routerRemote(this.ctx);
+          const isolated = typeof remote?.modelCatalog === 'function';
+          if (!isolated && typeof this.ctx.remote?.session?.modelCatalog !== 'function') throw Error('Native model catalog is unavailable');
+          flight.controller = typeof globalThis.AbortController === 'function' ? new globalThis.AbortController() : undefined;
+          const request = isolated ? remote.modelCatalog(flight.controller?.signal) : this.ctx.remote.session.modelCatalog();
+          if (typeof this.timers.setTimeout !== 'function') return request;
+          return Promise.race([request, new Promise((_resolve, reject) => {
+            flight.timer = this.timers.setTimeout(() => {
+              const error = Error('Model catalog request timed out. Refresh to try again.');
+              error.code = 'catalog/timeout'; reject(error); flight.controller?.abort();
+            }, this.timeoutMs);
+          })]);
         }).then(response => {
           if (this.disposed || generation !== this.generation || this.refreshPending) return false;
           if (!response?.ok) { const error = Error(response?.error?.message ?? 'Native model catalog request failed'); error.code = response?.error?.code; throw error; }
           const catalog = normalizeCatalog(response.value);
-          this.publish({ status: 'ready', ...catalog, error: '' }); return true;
+          this.publish({ status: 'ready', ...catalog, error: '', loadedAt: Date.now() }); return true;
         }).catch(error => {
           if (!this.disposed && generation === this.generation && !this.refreshPending) this.publish({ ...emptyCatalog, status: 'error', error: error?.message ?? String(error), errorCode: error?.code });
           return false;
         }).finally(() => {
+          if (flight.timer !== undefined) this.timers.clearTimeout(flight.timer);
           if (this.disposed || generation !== this.generation || this.inFlight !== flight) return;
           this.inFlight = undefined;
           if (this.refreshPending) { this.refreshPending = false; void this.load(); }
@@ -367,6 +392,8 @@ window.__ModuleLoader__.load({
       }
       resetConnection() {
         if (this.disposed) return;
+        this.inFlight?.controller?.abort();
+        if (this.inFlight?.timer !== undefined) this.timers.clearTimeout(this.inFlight.timer);
         this.generation++; this.inFlight = undefined; this.refreshPending = false;
         this.publish({ ...emptyCatalog }); void this.load();
       }
@@ -396,6 +423,8 @@ window.__ModuleLoader__.load({
       }
       dispose() {
         if (this.disposed) return;
+        this.inFlight?.controller?.abort();
+        if (this.inFlight?.timer !== undefined) this.timers.clearTimeout(this.inFlight.timer);
         this.disposed = true; this.generation++; this.inFlight = undefined; this.refreshPending = false;
         for (const off of this.offs) off(); this.offs = []; this.listeners.clear(); this.snapshot = emptyCatalog;
       }
@@ -609,7 +638,7 @@ window.__ModuleLoader__.load({
           status: this.status, applyAttempted: !!this.applyAttempted, error: this.error, errorCode: this.errorCode, confirmed: this.confirmed, busy: this.busy(), available: this.available() };
         for (const listener of this.listeners) listener();
       }
-      available() { return typeof this.ctx.remote?.delegationRouter?.generateDraft === 'function' && typeof this.ctx.remote?.delegationRouter?.validateDraft === 'function'; }
+      available() { const remote = routerRemote(this.ctx); return typeof remote?.generateDraft === 'function' && typeof remote?.validateDraft === 'function'; }
       busy() { return ['generating', 'validating', 'applying'].includes(this.status); }
       routeAllowed(route) {
         if (!route || Object.keys(route).some(key => !['provider', 'model', 'effort'].includes(key))) return false;
@@ -710,7 +739,7 @@ window.__ModuleLoader__.load({
         this.publish();
         try {
           if (!this.current(epoch, inputKey, catalogRevision)) return false;
-          const response = this.unwrap(await this.ctx.remote.delegationRouter.generateDraft(input, this.startRequest(epoch)));
+          const response = this.unwrap(await routerRemote(this.ctx).generateDraft(input, this.startRequest(epoch)));
           if (!this.current(epoch, inputKey, catalogRevision)) { if (epoch === this.epoch) this.invalidate('draftConflict', 'conflict'); return false; }
           const draft = this.normalizeResult(response, input.scope);
           if (!Array.isArray(response.warnings) || response.warnings.some(warning => typeof warning !== 'string')) throw Error(this.t('draftInvalidResult'));
@@ -751,7 +780,7 @@ window.__ModuleLoader__.load({
         this.publish();
         try {
           if (!this.current(epoch, inputKey, catalogRevision, draftKey)) return false;
-          const response = this.unwrap(await this.ctx.remote.delegationRouter.validateDraft(request, this.startRequest(epoch)));
+          const response = this.unwrap(await routerRemote(this.ctx).validateDraft(request, this.startRequest(epoch)));
           this.finishRequest(epoch);
           if (!this.current(epoch, inputKey, catalogRevision, draftKey)) { if (epoch === this.epoch) this.invalidate('draftConflict', 'conflict'); return false; }
           const validated = this.normalizeResult(response, request.scope);
@@ -786,11 +815,25 @@ window.__ModuleLoader__.load({
     const fieldStyle = { display: 'grid', gap: 8, minWidth: 0 };
     const inputStyle = { width: '100%', minWidth: 0, minHeight: 44, boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-secondary, #777)', color: 'inherit', background: 'var(--dsw-alias-background-primary, transparent)', font: 'inherit' };
     const buttonStyle = { ...inputStyle, width: 'auto', cursor: 'pointer' };
+    function CatalogPanel({ catalog, blocked, t }) {
+      const state = React.useSyncExternalStore(catalog?.subscribe ?? (() => () => {}), catalog?.getSnapshot ?? (() => emptyCatalog), catalog?.getSnapshot ?? (() => emptyCatalog));
+      const count = state.groups.reduce((total, group) => total + group.models.length, 0);
+      return h('section', { 'data-model-catalog': true, style: { margin: '16px 0', minWidth: 0 } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
+          h('button', { type: 'button', style: buttonStyle, disabled: blocked || !catalog || state.status === 'loading', onClick: () => { if (!blocked) return catalog?.load(); } }, t(state.status === 'loading' ? 'catalogLoading' : 'catalogRefresh')),
+          h('span', { role: 'status', 'aria-live': 'polite' }, state.status === 'ready' ? t('catalogReady') + ' · ' + state.groups.length + ' ' + t('providers') + ' / ' + count + ' ' + t('models') + (state.loadedAt ? ' · ' + new Date(state.loadedAt).toLocaleTimeString() : '') : state.status === 'loading' ? t('catalogLoading') : '')),
+        state.status === 'error' ? h('p', { role: 'alert', style: paragraphStyle }, t('catalogFailed') + ' ' + (state.errorCode === 'catalog/timeout' ? t('catalogTimeout') : state.error)) : null,
+        state.failures.length ? h('div', { role: 'alert' }, h('p', { style: paragraphStyle }, t('catalogPartial')), h('ul', null, state.failures.map(failure => h('li', { key: failure.id, style: { overflowWrap: 'anywhere' } }, failure.name + ' (' + failure.id + '): ' + failure.message)))) : null,
+        state.status === 'ready' && count === 0 ? h('p', { role: 'status' }, t('catalogEmpty')) : null);
+    }
     function DraftWizard({ generator, editor, catalog, t }) {
       const state = React.useSyncExternalStore(generator.subscribe, generator.getSnapshot, generator.getSnapshot);
       const editorState = React.useSyncExternalStore(editor.subscribe, editor.getSnapshot, editor.getSnapshot);
       const catalogState = React.useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
+      // Preparing generation inputs never writes Settings. Only generate/apply need a clean editor.
+      const inputBlocked = state.busy;
       const blocked = state.busy || !editor.editable(generator) || editorState.dirty || editorState.autosavePaused;
+      const [scopeSearch, setScopeSearch] = React.useState('');
       const route = state.input.generator;
       const model = route && catalog.find(route.provider, route.model);
       const efforts = catalogEfforts(model, t);
@@ -805,35 +848,44 @@ window.__ModuleLoader__.load({
       return h('section', { 'data-draft-generator': true, style: { minWidth: 0, margin: '24px 0' } },
         h('h3', null, t('draftTitle')), h('p', { style: paragraphStyle }, t('draftIntro')),
         !state.available ? h('p', { role: 'status' }, t('draftUnavailable')) : null,
-        !editor.editable(generator) || editorState.dirty || editorState.autosavePaused ? h('p', { role: 'status' }, t('draftProtected')) : null,
+
         stage('draftGenerator', [
-          label('draftGenerator', h('select', { style: inputStyle, 'aria-label': t('draftGenerator'), disabled: blocked || catalogState.status !== 'ready', value: currentModelKey, onChange: event => generator.selectGenerator(event.target.value) },
+          label('chooseModel', h('select', { style: inputStyle, 'aria-label': t('draftGenerator'), disabled: inputBlocked || catalogState.status !== 'ready', value: currentModelKey, onChange: event => generator.selectGenerator(event.target.value) },
             h('option', { value: '', disabled: true }, t('chooseModel')),
             route && !model ? h('option', { value: currentModelKey, disabled: true }, profile(route)) : null,
             catalogState.groups.map(group => h('optgroup', { key: group.id, label: group.name + ' (' + group.id + ')', disabled: catalogState.failures.some(failure => failure.id === group.id) },
-              group.models.map(item => h('option', { key: item.id, value: modelKey({ provider: group.id, model: item.id }) }, item.name + ' — ' + item.id)))))),
-          label('draftGeneratorEffort', h('select', { style: inputStyle, 'aria-label': t('draftGeneratorEffort'), disabled: blocked || !model, value: route && route.effort !== '' ? effortKey(route.effort) : '',
+              group.models.map(item => h('option', { key: item.id, value: modelKey({ provider: group.id, model: item.id }) }, item.name === item.id ? item.id : item.name + ' — ' + item.id)))))),
+          label('draftGeneratorEffort', h('select', { style: inputStyle, 'aria-label': t('draftGeneratorEffort'), disabled: inputBlocked || !model, value: route && route.effort !== '' ? effortKey(route.effort) : '',
             onChange: event => { const option = efforts.find(item => effortKey(item.id) === event.target.value); if (option) generator.setGeneratorEffort(option.id); } },
             h('option', { value: '', disabled: true }, t('chooseEffort')),
             route && route.effort !== '' && !efforts.some(item => item.id === route.effort) ? h('option', { value: effortKey(route.effort), disabled: true }, String(route.effort) + ' — ' + t('catalogUnverified')) : null,
             efforts.map(item => h('option', { key: effortKey(item.id), value: effortKey(item.id) }, item.name + (item.id === null ? '' : ' (' + item.id + ')'))))),
-          route ? h('code', { style: { overflowWrap: 'anywhere' } }, profile(route)) : null
+          null
         ]),
         stage('draftScope', [h('p', { style: paragraphStyle }, t('draftScopeHelp')),
+          h('input', { type: 'search', style: inputStyle, 'aria-label': t('scopeSearch'), placeholder: t('scopeSearch'), value: scopeSearch, disabled: inputBlocked, onChange: event => setScopeSearch(event.target.value) }),
           catalogState.status !== 'ready' ? h('p', { role: 'status' }, t('catalogUnverified')) : null,
-          catalogState.groups.map(group => h('div', { key: group.id }, h('h4', null, group.name + ' (' + group.id + ')'),
-            group.models.map(item => h('details', { key: item.id }, h('summary', { style: { minHeight: 44, cursor: 'pointer', overflowWrap: 'anywhere' } }, item.name + ' — ' + item.id),
+          h('div', { role: 'region', 'aria-label': t('draftScope'), tabIndex: 0, style: { maxHeight: 360, overflowY: 'auto', marginTop: 12 } }, catalogState.groups.map(group => {
+            const models = group.models.filter(item => (group.id + ' ' + group.name + ' ' + item.id + ' ' + item.name).toLowerCase().includes(scopeSearch.trim().toLowerCase()));
+            if (!models.length) return null;
+            return h('div', { key: group.id }, h('h4', null, group.name),
+            models.map(item => h('div', { key: item.id, style: { margin: '12px 0', paddingBottom: 12, borderBottom: '1px solid var(--dsw-alias-border-secondary, #777)' } }, h('div', { style: { overflowWrap: 'anywhere', fontWeight: 600 } }, item.name === item.id ? item.id : item.name + ' — ' + item.id),
+              h('div', { style: { display: 'flex', flexWrap: 'wrap', columnGap: 24 } },
               catalogEfforts(catalog.find(group.id, item.id), t).map(effort => {
                 const tuple = { provider: group.id, model: item.id, effort: effort.id };
                 return h('label', { key: effortKey(effort.id), style: { display: 'flex', alignItems: 'center', gap: 12, minHeight: 44, overflowWrap: 'anywhere' } },
-                  h('input', { type: 'checkbox', style: { minWidth: 24, minHeight: 24 }, disabled: blocked || !generator.routeAllowed(tuple), checked: state.input.scope.some(value => routeKey(value) === routeKey(tuple)), onChange: event => generator.toggleScope(tuple, event.target.checked) }), profile(tuple));
-              }))))),
+                  h('input', { type: 'checkbox', style: { minWidth: 24, minHeight: 24 }, disabled: inputBlocked || !generator.routeAllowed(tuple), checked: state.input.scope.some(value => routeKey(value) === routeKey(tuple)), onChange: event => generator.toggleScope(tuple, event.target.checked) }), effort.name);
+              })))));
+          })),
           h('p', { style: paragraphStyle }, t('draftSelected') + ': ' + state.input.scope.length + ' / 128'),
           h('ul', null, state.input.scope.map(item => h('li', { key: routeKey(item), style: { overflowWrap: 'anywhere' } }, profile(item)))),
-          button('draftClearScope', () => generator.setScope([]), blocked || !state.input.scope.length)
+          button('draftClearScope', () => generator.setScope([]), inputBlocked || !state.input.scope.length)
         ]),
-        label('draftRequirements', h('textarea', { style: { ...inputStyle, minHeight: 120, resize: 'vertical' }, 'aria-label': t('draftRequirements'), maxLength: 8000, value: state.input.requirements, disabled: blocked, onChange: event => generator.setRequirements(event.target.value) })),
+        label('draftRequirements', h('textarea', { style: { ...inputStyle, minHeight: 120, resize: 'vertical' }, 'aria-label': t('draftRequirements'), maxLength: 8000, value: state.input.requirements, disabled: inputBlocked, onChange: event => generator.setRequirements(event.target.value) })),
         h('p', { style: paragraphStyle }, state.input.requirements.length + ' / 8000'), h('p', { style: paragraphStyle }, t('draftCost')),
+        blocked && !state.busy ? h('div', { role: 'status' }, h('p', { style: paragraphStyle }, t('draftProtected')),
+          editorState.dirty && !editorState.receiptUnverified && !editorState.saving ? button('cancel', () => editor.reload(), editorState.reloading) : null) : null,
+        !blocked && !generator.inputsValid() ? h('p', { role: 'status', style: paragraphStyle }, t('draftInputRequired')) : null,
         h('div', { style: { display: 'flex', gap: 12, flexWrap: 'wrap' } },
           button('draftGenerate', () => generator.generate(), blocked || !state.available || !generator.inputsValid()),
           state.busy && state.status !== 'applying' ? button('draftCancel', () => generator.cancel(), false) : null),
@@ -883,7 +935,7 @@ window.__ModuleLoader__.load({
             !candidate.provider && !candidate.model ? h('option', { value: '', disabled: true }, t('chooseModel')) : null,
             missing ? h('option', { value: modelKey(candidate), disabled: true }, candidate.provider + ' / ' + candidate.model) : null,
             catalogState.groups.map(provider => h('optgroup', { key: provider.id, label: provider.name + ' (' + provider.id + ')', disabled: catalogState.status !== 'ready' || catalogState.failures.some(failure => failure.id === provider.id) },
-              provider.models.map(item => h('option', { key: item.id, value: modelKey({ provider: provider.id, model: item.id }) }, item.name + ' — ' + item.id))))),
+              provider.models.map(item => h('option', { key: item.id, value: modelKey({ provider: provider.id, model: item.id }) }, item.name === item.id ? item.id : item.name + ' — ' + item.id))))),
           candidate.provider && candidate.model ? h('code', { style: { overflowWrap: 'anywhere', whiteSpace: 'normal' } }, candidate.provider + ' / ' + candidate.model) : null,
           missing ? h('span', { role: 'status' }, t(catalogState.status === 'ready' && !failed ? 'catalogMissing' : 'catalogUnverified')) : null);
         const effortPicker = h('label', { style: fieldStyle }, h('span', null, t('effort')),
@@ -904,33 +956,27 @@ window.__ModuleLoader__.load({
         state.status !== 'ready' ? h('p', { role: 'status' }, t(state.status === 'loading' ? 'loading' : 'unavailable')) : null,
         state.status === 'ready' && !state.writable ? h('p', { role: 'status' }, t('readOnly')) : null,
         state.invalidSource ? group(t('invalidSourceTitle'), [h('p', { role: 'alert' }, t('invalidSource')), h('details', null, h('summary', null, t('originalConfiguration')), json(state.invalidOriginal))]) : null,
+        h(CatalogPanel, { catalog, blocked: state.generatedBusy, t }),
         generator && catalog ? h(DraftWizard, { generator, editor, catalog, t }) : null,
-        h('h3', null, t('manualTitle')),
-        h('div', { 'data-autosave': true, style: { position: 'sticky', top: 0, zIndex: 1, padding: '12px 0', background: 'var(--dsw-alias-background-primary, #fff)', borderBottom: '1px solid var(--dsw-alias-border-secondary, #777)' } },
+        h('div', { 'data-autosave': true, style: { padding: '12px 0', background: 'var(--dsw-alias-background-primary, #fff)', borderBottom: '1px solid var(--dsw-alias-border-secondary, #777)' } },
           h('div', { role: 'status', 'aria-live': 'polite', 'aria-atomic': true }, t(state.saving ? 'saving' : state.savedButNotLive ? 'savedButNotLive' : state.error || state.conflicted ? 'autosaveFailed' : state.dirty ? validDraft(ui) ? 'autosavePending' : 'autosaveIncomplete' : state.saved ? 'saved' : 'autosave')),
           state.conflicted ? h('p', { role: 'alert' }, t('conflict')) : null,
           state.error ? h('p', { role: 'alert' }, state.error) : null,
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 8 } },
             state.error && state.dirty && !state.receiptUnverified && !state.connectionReset && !state.conflicted ? button('retry', () => editor.save(), disabled || !validDraft(ui)) : null,
             button(state.dirty && !state.receiptUnverified || state.connectionReset ? 'cancel' : 'refresh', () => editor.reload(), state.saving || state.reloading || state.generatedBusy))),
+        h('details', { 'data-manual-editor': true, style: { marginTop: 24 } }, h('summary', { style: { minHeight: 44, cursor: 'pointer', fontWeight: 600 } }, t('manualTitle'), ' · ' + ui.candidates.length),
         grid([input('enabled', ui.enabled, value => edit(next => { next.enabled = value; }), 'checkbox'),
           h('label', { style: fieldStyle }, h('span', null, t('defaultCandidate')), h('select', { style: inputStyle, 'aria-label': t('defaultCandidate'), value: ui.defaultCandidateId ?? '', disabled, onChange: event => { const draft = editor.getSnapshot().draft; if (event.target.value === '' && !draft.enabled) edit(next => { delete next.defaultCandidateId; }); else if (draft.candidates.filter(candidate => candidate.id === event.target.value).length === 1) edit(next => { next.defaultCandidateId = event.target.value; }); } },
             h('option', { value: '', disabled: !!ui.enabled }, t('chooseDefault')),
             ui.defaultCandidateId && !ui.candidates.some(candidate => candidate.id === ui.defaultCandidateId) ? h('option', { value: ui.defaultCandidateId, disabled: true }, ui.defaultCandidateId) : null,
             ui.candidates.filter(candidate => candidate.id && ui.candidates.filter(other => other.id === candidate.id).length === 1).map(candidate => h('option', { key: candidate.id, value: candidate.id }, (candidate.name || candidate.id) + ' — ' + candidate.id))))]),
-        h('p', { style: paragraphStyle }, t('authority')),
-        h('h3', null, t('catalog')), h('p', { style: paragraphStyle }, t('catalogHelp')),
-        button('catalogRefresh', () => { if (!editor.getSnapshot().generatedBusy) return catalog?.load(); }, state.generatedBusy || !catalog || catalogState.status === 'loading'),
-        catalogState.status === 'loading' ? h('p', { role: 'status' }, t('catalogLoading')) : null,
-        catalogState.status === 'error' ? h('p', { role: 'alert' }, t('catalogFailed') + ' ' + catalogState.error) : null,
-        catalogState.failures.length ? h('div', { role: 'alert' }, h('p', { style: paragraphStyle }, t('catalogPartial')), h('ul', null, catalogState.failures.map(failure => h('li', { key: failure.id }, failure.name + ' (' + failure.id + '): ' + failure.message)))) : null,
-        catalogState.status === 'ready' && !catalogState.groups.some(provider => provider.models.length) ? h('p', { role: 'status' }, t('catalogEmpty')) : null,
+
         h('h3', null, t('candidates')), rows.length ? rows : h('p', { style: paragraphStyle }, t('noCandidates')),
         h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12 } }, button('addCandidate', () => editor.addCandidate(), disabled || ui.candidates.length >= 128)),
         h('details', { style: { margin: '24px 0' } }, h('summary', null, t('advanced')),
           group(t('limits'), grid(['maxPendingStarts','maxActivePerModel','maxCreationsPerParent','metadataTimeoutMs'].map(key => input(key, ui.limits[key], value => edit(next => { next.limits[key] = value; }), 'number')))),
-          h('h3', null, t('auditFile')), h('code', { style: { overflowWrap: 'anywhere' } }, state.auditFile ?? '—'), h('p', { style: paragraphStyle }, t('auditHelp'))),
-        h('p', { style: paragraphStyle }, t('executionEvidence'))
+          h('p', { style: paragraphStyle }, t('authority')), h('p', { style: paragraphStyle }, t('executionEvidence'))))
       );
     }
 
@@ -947,6 +993,11 @@ window.__ModuleLoader__.load({
         cancellation: { parameter: 'signal' }, result: codec(method + 'Result')
       }));
     }
+    function catalogRemoteDescriptors() {
+      return [{ id: 'dsh-delegation-router#delegationRouter/modelCatalog', service: 'delegationRouter', namespace: 'delegationRouter', method: 'modelCatalog',
+        invocation: { kind: 'direct' }, parameters: [], cancellation: { parameter: 'signal' },
+        result: { mode: 'strict', typeSymbol: 'dsh-delegation-router#ModelCatalog', create: () => ({ parse(value) { normalizeCatalog(value); return value; } }) } }];
+    }
     function apply(ctx) {
       const t = ctx.locale.bind(NS);
       ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'delegation-router: locale');
@@ -955,8 +1006,8 @@ window.__ModuleLoader__.load({
       const generator = new DraftGenerator(ctx, editor, catalog, t);
       if (typeof ctx.remote.$mount === 'function') ctx.effect(() => {
         let disposed = false, release;
-        const pending = ctx.remote.$mount({ package: 'dsh-delegation-router', descriptors: draftRemoteDescriptors() }).then(async off => {
-          if (disposed) await off(); else { release = off; generator.publish(); }
+        const pending = ctx.remote.$mount({ package: 'dsh-delegation-router', descriptors: [...draftRemoteDescriptors(), ...catalogRemoteDescriptors()] }).then(async off => {
+          if (disposed) await off(); else { release = off; generator.publish(); catalog.resetConnection(); }
         }).catch(() => { if (!disposed) { generator.error = t('draftUnavailable'); generator.publish(); } });
         return async () => { disposed = true; await pending; await release?.(); };
       }, 'delegation-router: configuration draft remote');
@@ -972,12 +1023,12 @@ window.__ModuleLoader__.load({
       ctx.effect(() => () => catalog.dispose(), 'delegation-router: native catalog subscriptions');
       ctx.effect(() => () => generator.dispose(), 'delegation-router: draft generator');
       ctx.on('connection/reset', () => { generator.resetConnection(); editor.resetConnection(); catalog.resetConnection(); });
-      void catalog.load();
+      if (typeof ctx.remote.$mount !== 'function') void catalog.load();
       const component = props => h(RouterPage, { ...props, editor, catalog, generator, t });
       for (const [name, key] of [['plugins.bundle.config', 'dsh-delegation-router'], ['plugins.row.config', 'dsh-delegation-router#delegation-router']]) {
         ctx.effect(() => ctx.slots.inject(name, () => ctx.slots.register({ name, key }, component)), 'delegation-router: ' + name);
       }
     }
-    return { inject: ['slots', 'locale', 'configForms', 'remote', 'remote.settings', 'remote.session'], apply, draftRemoteDescriptors, RouterEditor, RouterPage, DraftGenerator, DraftWizard, routeKey, ModelCatalog, normalizeCatalog, modelKey, catalogEfforts, effortKey, CATALOG_EVENTS, emptyDraft, draftFrom, normalizeAckUi, validDraft, dictionaries: { zh, en } };
+    return { inject: ['slots', 'locale', 'configForms', 'remote', 'remote.settings', 'remote.session'], apply, draftRemoteDescriptors, catalogRemoteDescriptors, CatalogPanel, RouterEditor, RouterPage, DraftGenerator, DraftWizard, routeKey, ModelCatalog, normalizeCatalog, modelKey, catalogEfforts, effortKey, CATALOG_EVENTS, emptyDraft, draftFrom, normalizeAckUi, validDraft, dictionaries: { zh, en } };
   }
 });

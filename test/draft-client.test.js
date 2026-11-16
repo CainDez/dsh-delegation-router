@@ -95,7 +95,7 @@ test('RPC mount descriptors bind cancellation and async disposal releases exactl
     assert.equal(mounted.requests.length, 1);
     const request = copy(mounted.requests[0]); assert.equal(request.package, 'dsh-delegation-router');
     assert.deepEqual(request.descriptors.map(row => [row.service, row.method, row.cancellation.parameter]), [
-      ['delegationRouter', 'generateDraft', 'signal'], ['delegationRouter', 'validateDraft', 'signal']
+      ['delegationRouter', 'generateDraft', 'signal'], ['delegationRouter', 'validateDraft', 'signal'], ['delegationRouter', 'modelCatalog', 'signal']
     ]);
     let cleanup;
     if (late) cleanup = mounted.dispose();
@@ -142,6 +142,30 @@ test('full triples generate a detached draft; reviewed application validates the
   assert.equal(saved.ui.defaultCandidateId, 'scope-2'); assert.equal(saved.ui.candidates[0].name, 'My name');
   assert.equal(h.generator.getSnapshot().status, 'applied'); assert.equal(h.pendingTimers.size, 0);
   assert.equal(await h.generator.validateAndApply(), false); await h.flushTimers(); assert.equal(h.mutations.length, 1);
+});
+
+test('dynamic RPC uses optional scoped lookup rather than undeclared namespace property access', async testContext => {
+  const h = await harness(testContext), remote = h.ctx.remote.delegationRouter; let lookups = 0;
+  remote.modelCatalog = async () => ({ok:true,value:h.catalogResponse});
+  h.ctx.get = key => { assert.equal(key,'remote.delegationRouter'); lookups++; return remote; };
+  Object.defineProperty(h.ctx.remote,'delegationRouter',{get(){ throw Error('cannot get property without inject'); },configurable:true});
+  assert.equal(h.generator.available(),true); assert.equal(await h.catalog.load(),true);
+  h.configure(); assert.equal(await h.generator.generate(),true); h.generator.confirm(true);
+  assert.equal(await h.generator.validateAndApply(),true); assert.equal(h.mutations.length,1);
+  assert.ok(lookups>=4);
+});
+
+test('unfinished manual edits do not disable generator and scope input preparation', async testContext => {
+  const h = await harness(testContext), original = h.current(); h.editor.addCandidate();
+  const nodes = wizard(h);
+  const picker = nodes.find(node => node?.type === 'select' && node.props['aria-label'] === t('draftGenerator'));
+  assert.equal(picker.props.disabled, false);
+  picker.props.onChange({target:{value:plugin.modelKey(plain)}});
+  assert.deepEqual(copy(h.generator.getSnapshot().input.generator), plain);
+  assert.equal(nodes.find(node => node?.type === 'textarea' && node.props.maxLength === 8000).props.disabled, false);
+  assert.equal(button(h,'draftGenerate').props.disabled, true);
+  assert.equal(await h.generator.generate(), false); assert.equal(h.calls.length, 0); assert.equal(h.mutations.length, 0);
+  assert.deepEqual(h.current(), original);
 });
 
 test('generator defaults are advertised only; explicit choices and genuine null are supported', async testContext => {
@@ -363,7 +387,7 @@ test('unknown generated write stays receipt-fenced with no auto/manual duplicate
   assert.equal(h.editor.getSnapshot().receiptUnverified, true); assert.equal(h.editor.getSnapshot().dirty, true);
   assert.equal(await h.generator.validateAndApply(), false); assert.equal(await h.generator.generate(), false);
   assert.equal(await h.editor.save(), false); await h.flushTimers(); assert.equal(h.mutations.length, 1);
-  assert.match(h.generator.getSnapshot().error, /Resolve unsaved manual changes/);
+  assert.equal(h.generator.getSnapshot().error, t('draftProtected'));
 });
 
 test('real RemoteResult transport failures preserve unknown-write fences for manual and generated saves', async testContext => {
@@ -481,7 +505,7 @@ test('wizard exposes before/draft review fee warning immutable profiles and expl
     assert.ok(nodes.some(row => row?.props?.role === 'region' && row.props.style.overflowX === 'auto' && row.props.tabIndex === 0));
     const apply = nodes.find(row => row?.type === 'button' && row.props.children.includes(translate('draftApply')));
     assert.equal(apply.props.disabled, true);
-    assert.equal(nodes.some(row => row?.type === 'input' && /provider|model|effort/.test(row.props['aria-label'] ?? '')), false);
+    assert.equal(nodes.some(row => row?.type === 'input' && row.props.type !== 'search' && /provider|model|effort/.test(row.props['aria-label'] ?? '')), false);
   }
   assert.equal(button(h, 'draftApply').props.disabled, true); h.generator.confirm(true); assert.equal(button(h, 'draftApply').props.disabled, false);
   const nodes = flatten(plugin.RouterPage({ editor: h.editor, catalog: h.catalog, generator: h.generator, t, view: 'page' }));

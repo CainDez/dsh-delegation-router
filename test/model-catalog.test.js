@@ -10,7 +10,7 @@ const React = {
   useRef: value => ({ current: value }), useEffect() {}
 };
 let definition;
-vm.runInNewContext(source, { setTimeout, clearTimeout, window: { __ModuleLoader__: { load: entry => { definition = entry; } }, confirm: () => true } });
+vm.runInNewContext(source, { AbortController, setTimeout, clearTimeout, window: { __ModuleLoader__: { load: entry => { definition = entry; } }, confirm: () => true } });
 const plugin = definition.factory(name => { assert.equal(name, 'react'); return React; });
 const { ModelCatalog, RouterEditor, normalizeCatalog, modelKey } = plugin;
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -64,7 +64,7 @@ function flatten(node) {
   if (node === null || node === undefined || node === false) return [];
   if (Array.isArray(node)) return node.flatMap(flatten);
   if (typeof node !== 'object') return [node];
-  if (node.type === 'function') return flatten(node.type(node.props));
+  if (typeof node.type === 'function') return flatten(node.type(node.props));
   return [node, ...flatten(node.props?.children)];
 }
 const page = (editor, catalog) => flatten(plugin.RouterPage({ editor, catalog, t, view: 'page' }));
@@ -90,6 +90,45 @@ test('malformed and incomplete reasoning responses fail closed, not as a fresh e
     const h = harness(); h.setResponse(async () => ok(value)); const catalog = new ModelCatalog(h.ctx);
     assert.equal(await catalog.load(), false); assert.equal(catalog.getSnapshot().status, 'error'); assert.equal(catalog.select({ edit() { assert.fail(); } }, 0, key('p', 'm')), false); catalog.dispose();
   }
+});
+
+test('installed isolated catalog RPC is preferred and cancelled on connection reset', async () => {
+  const h = harness(), stale = deferred(); let calls = 0, oldSignal;
+  h.ctx.remote.delegationRouter = { modelCatalog(signal) { calls++; if (calls === 1) { oldSignal = signal; return stale.promise; } return Promise.resolve(ok(nativeCatalog())); } };
+  const catalog = new ModelCatalog(h.ctx), pending = catalog.load(); await Promise.resolve();
+  catalog.resetConnection(); const fresh = catalog.inFlight.promise; assert.equal(await fresh, true);
+  assert.equal(oldSignal.aborted, true); assert.equal(h.rpcArgs.length, 0);
+  stale.resolve(ok({groups:[],failures:[]})); await pending;
+  assert.equal(catalog.getSnapshot().groups.length, 1); catalog.dispose();
+});
+
+test('catalog timeout releases refresh and ignores a late response from the stalled request', async () => {
+  const h = harness(), stalled = deferred(), callbacks = new Map(); let id = 0;
+  const timers = { setTimeout(fn) { const next = ++id; callbacks.set(next, fn); return next; }, clearTimeout(key) { callbacks.delete(key); } };
+  h.setResponse(() => stalled.promise);
+  const catalog = new ModelCatalog(h.ctx, timers, 20), pending = catalog.load();
+  await Promise.resolve(); assert.equal(catalog.getSnapshot().status, 'loading');
+  [...callbacks.values()][0](); assert.equal(await pending, false);
+  assert.equal(catalog.getSnapshot().status, 'error'); assert.equal(catalog.getSnapshot().errorCode, 'catalog/timeout');
+  assert.equal(catalog.inFlight, undefined); assert.equal(callbacks.size, 0);
+  h.setResponse(async () => ok(nativeCatalog())); assert.equal(await catalog.load(), true);
+  const fresh = copy(catalog.getSnapshot()); stalled.resolve(ok({groups:[],failures:[]}));
+  await Promise.resolve(); await Promise.resolve(); assert.deepEqual(copy(catalog.getSnapshot()), fresh);
+  assert.equal(h.rpcArgs.length, 2); catalog.dispose();
+});
+
+test('catalog refresh control shows loading, successful counts and adjacent failure feedback', async () => {
+  const h = harness(), catalog = new ModelCatalog(h.ctx), editor = new RouterEditor(h.ctx, t);
+  const button = () => page(editor, catalog).find(node => node?.type === 'button' && node.props.children.includes(t('catalogRefresh')));
+  assert.equal(button().props.disabled, false);
+  const pending = button().props.onClick();
+  assert.ok(page(editor, catalog).includes(t('catalogLoading'))); await pending;
+  assert.ok(page(editor, catalog).some(node => typeof node === 'string' && node.startsWith(t('catalogReady')) && node.includes('3')));
+  const root = plugin.RouterPage({editor,catalog,t,view:'page'});
+  assert.ok(flatten(root).find(node => node?.props?.['data-model-catalog']));
+  const manual = flatten(root).find(node => node?.props?.['data-manual-editor']);
+  assert.equal(manual.type, 'details'); assert.equal(!!manual.props.open, false);
+  assert.equal(h.mutations.length, 0); editor.dispose(); catalog.dispose();
 });
 
 test('one zero-argument native RPC serves same-generation concurrent loads', async () => {
