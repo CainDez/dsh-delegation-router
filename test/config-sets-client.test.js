@@ -385,6 +385,46 @@ test('multi-preset UI keeps model selectors only in the global pool, not preset 
   assert.ok(nodes.some(row => row?.props?.['data-shared-pool']));
 });
 
+test('choose a saved default at the top even without a catalog; autosave preserves all other preset data', async context => {
+  const ui = collection();
+  ui.candidates[0].description = 'Global description';
+  ui.candidates.push({ ...ui.candidates[0], id: 'extra', effort: 'high' });
+  ui.configs[0].overrides = [{ id: 'same-id', name: 'Primary role' }];
+  delete ui.configs[1].overrides;
+  const h = harness(context, ui);
+  const nodes = flatten(plugin.RouterPage({ editor: h.editor, t }));
+  const isPicker = row => row?.type === 'select' && row.props['aria-label'] === t('defaultCandidate');
+  const picker = flatten(nodes.find(row => row?.props?.['data-config-sets'])).find(isPicker);
+  assert.ok(picker); assert.equal(picker.props.disabled, false); assert.equal(picker.props.value, 'same-id');
+  assert.equal(nodes.filter(isPicker).length, 1);
+  assert.deepEqual(flatten(picker).filter(row => row?.type === 'option' && row.props.value).map(row => [row.props.value, row.props.children[0]]), [
+    ['same-id', 'Primary role — p / one · No effort'], ['extra', 'one — p / one · high']
+  ]);
+  for (const id of ['same-id', '', 'missing']) picker.props.onChange({ target: { value: id } });
+  assert.equal(h.editor.getSnapshot().dirty, false); assert.equal(h.timers.size, 0);
+  picker.props.onChange({ target: { value: 'extra' } });
+  assert.equal(h.timers.size, 1); assert.equal(h.mutations.length, 0);
+  assert.equal(await h.editor.save(), true);
+  const expected = copy(ui); expected.configs[0].defaultCandidateId = 'extra';
+  assert.deepEqual(h.snapshot().user.ui, expected);
+  assert.equal(await h.editor.switchConfig('b'), true);
+  const afterSwitch = flatten(plugin.RouterPage({ editor: h.editor, t })).find(isPicker);
+  assert.equal(afterSwitch.props.value, 'same-id');
+  picker.props.onChange({ target: { value: 'extra' } });
+  assert.equal(h.editor.getSnapshot().dirty, false);
+});
+
+test('legacy single-policy settings can still choose a default without migrating', async context => {
+  const ui = policy(); ui.candidates.push({ id: 'extra', name: 'Extra', provider: 'p', model: 'extra', effort: null });
+  const h = harness(context, ui);
+  const nodes = flatten(plugin.RouterPage({ editor: h.editor, t }));
+  const select = nodes.find(row => row?.type === 'select' && row.props['aria-label'] === t('defaultCandidate'));
+  assert.equal(select.props.disabled, false);
+  select.props.onChange({ target: { value: 'extra' } });
+  assert.equal(await h.editor.save(), true);
+  assert.deepEqual(h.snapshot().user.ui, { ...ui, defaultCandidateId: 'extra' });
+});
+
 test('both languages render generic names, explicit delete controls and no preset scene selector', context => {
   const h = harness(context);
   for (const dictionary of [plugin.dictionaries.en, plugin.dictionaries.zh]) {

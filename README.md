@@ -14,6 +14,7 @@
 
 - **新建预设**：保留全局候选、启用开关和配额，只清空新预设的分工说明；默认项沿用当前预设，保存后切换到新预设。
 - **复制当前预设**：复制分工与默认项，不复制或新建可用模型池；修改副本的分工不会改原预设。
+- **选择默认委派模型**：在页面顶部「多模型预设」里直接从已配置的候选中选择，列表显示 Provider、模型和思考档位，不依赖模型目录刷新。更改自动保存，只影响当前预设下未指定候选的后续委派，不修改全局模型池或其他预设。
 - **重命名／切换**：名称 trim 后须为 1–120 字符、无控制符、不区分大小写判重。切换单次提交并验证完整保存回执，不取消已有委派，仍保留未结工作与 `CONFIG_BUSY` 边界。
 - **删除预设**：仅删除非当前预设且须二次确认，不改全局候选，不自动回退。不能删除当前或最后一套。
 - **维护全局模型池**：模型、档位、新增及删除都只在全局区域操作。仍被任一预设设为默认项的候选不能删除，须先切换相关预设更换默认项；删除其他候选时会同步清除该候选在各预设中的文字覆盖，不自动改默认。
@@ -100,8 +101,8 @@
 npm test
 npm run check
 npm pack --ignore-scripts
-node scripts/verify-pack.js ./dsh-delegation-router-0.11.0.tgz
-dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.11.0/dsh-delegation-router-0.11.0.tgz
+node scripts/verify-pack.js ./dsh-delegation-router-0.11.1.tgz
+dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.11.1/dsh-delegation-router-0.11.1.tgz
 ```
 
 安装前检查未结委派并备份配置。配置验收优先通过文件和宿主接口核对，无需 Computer Use。宿主库隔离检查可运行 `scripts/verify-host-api.js`、`scripts/verify-host-model-catalog.js`、`scripts/verify-host-lifecycle.js`、`scripts/verify-host-draft.js`，参数为对应宿主的 package.json 路径；它们不连接运行 Profile、不创建 Agent、不发起推理。

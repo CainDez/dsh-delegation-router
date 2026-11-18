@@ -128,7 +128,10 @@ window.__ModuleLoader__.load({
   "name": "候选名称",
   "description": "适用说明（一句话）",
   "effort": "思考档位",
-  "defaultCandidate": "默认候选",
+  "defaultCandidate": "默认委派模型",
+  "defaultCandidateHelp": "从已配置的模型中选择。更改会自动保存，仅用于当前预设下未指定候选的后续委派。",
+  "defaultCandidateEmpty": "暂无可选模型，请先在手动编辑中添加候选。",
+  "defaultCandidateNoEffort": "无档位",
   "chooseDefault": "未指定默认候选（仅关闭时允许）",
   "noCandidates": "尚无候选。添加一个候选，并从目录选择精确 provider / model / 思考档位。",
   "catalogHelp": "候选模型从 DSH 原生目录选择，档位为目录公示的真实值单选；明确无可选档位时保存 null，不补造 default。目录可见不代表授权或通过后端预检。",
@@ -262,7 +265,10 @@ window.__ModuleLoader__.load({
   "name": "Candidate name",
   "description": "Usage description (one sentence)",
   "effort": "Reasoning effort",
-  "defaultCandidate": "Default candidate",
+  "defaultCandidate": "Default delegation model",
+  "defaultCandidateHelp": "Choose from configured models. Changes are saved automatically and apply only to future delegations that do not specify a candidate under this preset.",
+  "defaultCandidateEmpty": "No models to choose from. Add a candidate in the manual editor first.",
+  "defaultCandidateNoEffort": "No effort",
   "chooseDefault": "No default candidate (disabled routing only)",
   "noCandidates": "No candidates yet. Add one and choose an exact provider / model / effort from the catalog.",
   "catalogHelp": "Candidate models use the native DSH catalog and one real advertised effort. Confirmed effort-less entries use null, never an invented default. Catalog visibility is not authorization or backend preflight approval.",
@@ -608,11 +614,22 @@ window.__ModuleLoader__.load({
         const base = new Map((this.configSet.candidates ?? []).map(row => [row.id, row]));
         next.candidates = this.draft.candidates.map(row => base.has(row.id) ? { ...clone(base.get(row.id)), provider: row.provider, model: row.model, effort: row.effort } : clone(row));
         const ids = new Set(next.candidates.map(row => row.id));
-        for (const preset of next.configs) preset.overrides = (preset.overrides ?? []).filter(row => ids.has(row.id));
+        for (const preset of next.configs) if (preset.overrides) preset.overrides = preset.overrides.filter(row => ids.has(row.id));
         const current = next.configs.find(item => item.id === next.activeConfigId);
         if (current) {
           if (this.draft.defaultCandidateId === undefined) delete current.defaultCandidateId; else current.defaultCandidateId = this.draft.defaultCandidateId;
-          current.overrides = this.draft.candidates.filter(row => row.name !== base.get(row.id)?.name || (row.description ?? '') !== (base.get(row.id)?.description ?? '')).map(({ id, name, description }) => ({ id, name, description: description ?? '' }));
+          // A model/default-only edit must not rewrite unchanged roles (in
+          // particular, an omitted description means inherit, not clear).
+          const overrides = new Map((current.overrides ?? []).map(row => [row.id, row]));
+          let rolesChanged = false;
+          for (const { id, name, description } of this.draft.candidates) {
+            const original = base.get(id), override = overrides.get(id);
+            if (!original || name === (override?.name ?? original.name) && (description ?? '') === (override?.description ?? original.description ?? '')) continue;
+            rolesChanged = true;
+            if (name === original.name && (description ?? '') === (original.description ?? '')) overrides.delete(id);
+            else overrides.set(id, { id, name, description: description ?? '' });
+          }
+          if (rolesChanged) current.overrides = [...overrides.values()];
         }
         return next;
       }
@@ -1112,7 +1129,7 @@ window.__ModuleLoader__.load({
             h('input', { type: 'checkbox', style: { minWidth: 24, minHeight: 24 }, 'aria-label': t(editor.configSet ? 'draftConfirmPreset' : 'draftConfirm'), checked: state.confirmed, disabled: blocked || !generator.editableDraft(), onChange: guarded(event => generator.confirm(event.target.checked)) }), t(editor.configSet ? 'draftConfirmPreset' : 'draftConfirm')),
           button('draftApply', () => generator.validateAndApply(), blocked || !state.available || !generator.canApply())) : null);
     }
-    function ConfigSetsPanel({ editor, state, t }) {
+    function ConfigSetsPanel({ editor, state, t, children }) {
       const [name, setName] = React.useState('');
       const [deleteId, setDeleteId] = React.useState(undefined);
       const viewToken = editor.viewToken();
@@ -1127,6 +1144,7 @@ window.__ModuleLoader__.load({
           h('select', { style: inputStyle, 'aria-label': t('activeConfig'), value: sets.activeConfigId, disabled: blocked, onChange: event => { setDeleteId(undefined); if (editor.matchesView(viewToken)) void editor.switchConfig(event.target.value); } },
             sets.configs.map(row => h('option', { key: row.id, value: row.id }, row.name)))),
         h('p', { style: paragraphStyle }, t('configSwitchHelp')),
+        children,
         state.dirty || state.saving || state.receiptUnverified || state.savedButNotLive ? h('p', { role: 'status', style: paragraphStyle }, t('configNotConfirmed')) : null,
         state.error ? h('p', { role: 'alert', style: paragraphStyle }, state.error) : null,
         blocked ? h('p', { role: 'status', style: paragraphStyle }, t('configSetProtected')) : null,
@@ -1160,6 +1178,19 @@ window.__ModuleLoader__.load({
       const group = (title, children) => h('fieldset', { style: { minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', border: '1px solid var(--dsw-alias-border-secondary, #777)', borderRadius: 8, padding: 16, margin: '16px 0' } }, h('legend', { style: { maxWidth: '100%', overflowWrap: 'anywhere' } }, title), children);
       const grid = children => h('div', { style: { display: 'grid', minWidth: 0, gridTemplateColumns: 'repeat(auto-fit,minmax(min(240px,100%),1fr))', gap: 16, alignItems: 'end' } }, children);
       const json = value => h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '100%' } }, JSON.stringify(value, null, 2));
+      const defaultOptions = ui.candidates.filter(candidate => candidate.id && ui.candidates.filter(other => other.id === candidate.id).length === 1);
+      const defaultPicker = h('label', { style: { ...fieldStyle, marginTop: 16 } }, h('span', null, t('defaultCandidate')),
+        h('select', { style: inputStyle, 'aria-label': t('defaultCandidate'), value: ui.defaultCandidateId ?? '', disabled: disabled || !defaultOptions.length, onChange: event => {
+          const id = event.target.value, draft = editor.getSnapshot().draft;
+          if (id === (draft.defaultCandidateId ?? '')) return;
+          if (id === '' && !draft.enabled) edit(next => { delete next.defaultCandidateId; });
+          else if (id && draft.candidates.filter(candidate => candidate.id === id).length === 1) edit(next => { next.defaultCandidateId = id; });
+        } },
+          h('option', { value: '', disabled: !!ui.enabled }, t(defaultOptions.length ? 'chooseDefault' : 'defaultCandidateEmpty')),
+          ui.defaultCandidateId && !defaultOptions.some(candidate => candidate.id === ui.defaultCandidateId) ? h('option', { value: ui.defaultCandidateId, disabled: true }, ui.defaultCandidateId) : null,
+          defaultOptions.map(candidate => h('option', { key: candidate.id, value: candidate.id },
+            (candidate.name || candidate.id) + (candidate.provider && candidate.model ? ' — ' + candidate.provider + ' / ' + candidate.model + (candidate.effort === undefined || candidate.effort === '' ? '' : ' · ' + (candidate.effort === null ? t('defaultCandidateNoEffort') : candidate.effort)) : '')))),
+        defaultOptions.length ? h('span', null, t('defaultCandidateHelp')) : null);
       const poolRows = [];
       const rows = ui.candidates.map((candidate, index) => {
         const set = (key, value) => edit(next => { if (next.candidates[index]?.id === candidate.id) next.candidates[index][key] = value; });
@@ -1202,7 +1233,7 @@ window.__ModuleLoader__.load({
         state.status !== 'ready' ? h('p', { role: 'status' }, t(state.status === 'loading' ? 'loading' : 'unavailable')) : null,
         state.status === 'ready' && !state.writable ? h('p', { role: 'status' }, t('readOnly')) : null,
         state.invalidSource ? group(t('invalidSourceTitle'), [h('p', { role: 'alert' }, t('invalidSource')), h('details', null, h('summary', null, t('originalConfiguration')), json(state.invalidOriginal))]) : null,
-        h(ConfigSetsPanel, { editor, state, t }),
+        h(ConfigSetsPanel, { editor, state, t }, defaultPicker),
         h(CatalogPanel, { catalog, blocked: state.generatedBusy, t }),
         generator && catalog ? h(DraftWizard, { generator, editor, catalog, t }) : null,
         h('div', { 'data-autosave': true, style: { padding: '12px 0', background: 'var(--dsw-alias-background-primary, #fff)', borderBottom: '1px solid var(--dsw-alias-border-secondary, #777)' } },
@@ -1213,11 +1244,7 @@ window.__ModuleLoader__.load({
             state.error && state.dirty && !state.receiptUnverified && !state.connectionReset && !state.conflicted ? button('retry', () => editor.matchesView(viewToken) && editor.save(), disabled || !validDraft(ui)) : null,
             button(state.dirty && !state.receiptUnverified || state.connectionReset ? 'cancel' : 'refresh', () => editor.matchesView(viewToken, false) && editor.reload(), state.saving || state.reloading || state.generatedBusy))),
         h('details', { 'data-manual-editor': true, style: { marginTop: 24 } }, h('summary', { style: { minHeight: 44, cursor: 'pointer', fontWeight: 600 } }, t('manualTitle'), ' · ' + ui.candidates.length),
-        grid([editor.configSet ? null : input('enabled', ui.enabled, value => edit(next => { next.enabled = value; }), 'checkbox'),
-          h('label', { style: fieldStyle }, h('span', null, t('defaultCandidate')), h('select', { style: inputStyle, 'aria-label': t('defaultCandidate'), value: ui.defaultCandidateId ?? '', disabled, onChange: event => { const draft = editor.getSnapshot().draft; if (event.target.value === '' && !draft.enabled) edit(next => { delete next.defaultCandidateId; }); else if (draft.candidates.filter(candidate => candidate.id === event.target.value).length === 1) edit(next => { next.defaultCandidateId = event.target.value; }); } },
-            h('option', { value: '', disabled: !!ui.enabled }, t('chooseDefault')),
-            ui.defaultCandidateId && !ui.candidates.some(candidate => candidate.id === ui.defaultCandidateId) ? h('option', { value: ui.defaultCandidateId, disabled: true }, ui.defaultCandidateId) : null,
-            ui.candidates.filter(candidate => candidate.id && ui.candidates.filter(other => other.id === candidate.id).length === 1).map(candidate => h('option', { key: candidate.id, value: candidate.id }, (candidate.name || candidate.id) + ' — ' + candidate.id))))]),
+        editor.configSet ? null : input('enabled', ui.enabled, value => edit(next => { next.enabled = value; }), 'checkbox'),
 
         h('h3', null, t(editor.configSet ? 'presetRoles' : 'candidates')), rows.length ? rows : h('p', { style: paragraphStyle }, t('noCandidates')),
         editor.configSet ? h('section', { 'data-shared-pool': true, style: { marginTop: 32 } }, h('h3', null, t('sharedPool')), h('p', { style: paragraphStyle }, t('sharedPoolHelp')), input('enabled', ui.enabled, value => edit(next => { next.enabled = value; }), 'checkbox'), poolRows) : null,
