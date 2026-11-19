@@ -1028,17 +1028,24 @@ window.__ModuleLoader__.load({
     }
 
     // Use the Host theme and native form semantics, not an independent app shell.
+    const BORDER = '1px solid var(--dsw-alias-border-secondary, #777)';
     const paragraphStyle = { maxWidth: '76ch', overflowWrap: 'anywhere' };
+    const mutedStyle = { margin: 0, fontSize: 13, lineHeight: 1.6, opacity: 0.75, maxWidth: '76ch', overflowWrap: 'anywhere' };
     const fieldStyle = { display: 'grid', gap: 8, minWidth: 0 };
-    const inputStyle = { width: '100%', minWidth: 0, minHeight: 44, boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-secondary, #777)', color: 'inherit', background: 'var(--dsw-alias-background-primary, transparent)', font: 'inherit' };
+    const inputStyle = { width: '100%', minWidth: 0, minHeight: 44, boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: BORDER, color: 'inherit', background: 'var(--dsw-alias-background-primary, transparent)', font: 'inherit' };
     const buttonStyle = { ...inputStyle, width: 'auto', cursor: 'pointer' };
+    const badgeStyle = { display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 999, border: BORDER, fontSize: 12, lineHeight: 1.6, whiteSpace: 'nowrap', fontWeight: 500 };
+    const strongBadgeStyle = { ...badgeStyle, fontWeight: 600, background: 'color-mix(in srgb, currentColor 14%, transparent)' };
+    const cardStyle = { minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', border: BORDER, borderRadius: 10, padding: 16, margin: '12px 0' };
+    const rowStyle = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 };
+    const autoGrid = (min = 260) => ({ display: 'grid', minWidth: 0, gridTemplateColumns: 'repeat(auto-fit,minmax(min(' + min + 'px,100%),1fr))', gap: 16, alignItems: 'start' });
     function CatalogPanel({ catalog, blocked, t }) {
       const state = React.useSyncExternalStore(catalog?.subscribe ?? (() => () => {}), catalog?.getSnapshot ?? (() => emptyCatalog), catalog?.getSnapshot ?? (() => emptyCatalog));
       const count = state.groups.reduce((total, group) => total + group.models.length, 0);
-      return h('section', { 'data-model-catalog': true, style: { margin: '16px 0', minWidth: 0 } },
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
-          h('button', { type: 'button', style: buttonStyle, disabled: blocked || !catalog || state.status === 'loading', onClick: () => { if (!blocked) return catalog?.load(); } }, t(state.status === 'loading' ? 'catalogLoading' : 'catalogRefresh')),
-          h('span', { role: 'status', 'aria-live': 'polite' }, state.status === 'ready' ? t('catalogReady') + ' · ' + state.groups.length + ' ' + t('providers') + ' / ' + count + ' ' + t('models') + (state.loadedAt ? ' · ' + new Date(state.loadedAt).toLocaleTimeString() : '') : state.status === 'loading' ? t('catalogLoading') : '')),
+      return h('section', { 'data-model-catalog': true, style: { margin: '12px 0', minWidth: 0 } },
+        h('div', { style: { ...rowStyle, justifyContent: 'space-between' } },
+          h('span', { role: 'status', 'aria-live': 'polite', style: { ...mutedStyle, flex: '1 1 240px' } }, state.status === 'ready' ? t('catalogReady') + ' · ' + state.groups.length + ' ' + t('providers') + ' / ' + count + ' ' + t('models') + (state.loadedAt ? ' · ' + new Date(state.loadedAt).toLocaleTimeString() : '') : state.status === 'loading' ? t('catalogLoading') : ''),
+          h('button', { type: 'button', style: buttonStyle, disabled: blocked || !catalog || state.status === 'loading', onClick: () => { if (!blocked) return catalog?.load(); } }, t(state.status === 'loading' ? 'catalogLoading' : 'catalogRefresh'))),
         state.status === 'error' ? h('p', { role: 'alert', style: paragraphStyle }, t('catalogFailed') + ' ' + (state.errorCode === 'catalog/timeout' ? t('catalogTimeout') : state.error)) : null,
         state.failures.length ? h('div', { role: 'alert' }, h('p', { style: paragraphStyle }, t('catalogPartial')), h('ul', null, state.failures.map(failure => h('li', { key: failure.id, style: { overflowWrap: 'anywhere' } }, failure.name + ' (' + failure.id + '): ' + failure.message)))) : null,
         state.status === 'ready' && count === 0 ? h('p', { role: 'status' }, t('catalogEmpty')) : null);
@@ -1129,6 +1136,8 @@ window.__ModuleLoader__.load({
             h('input', { type: 'checkbox', style: { minWidth: 24, minHeight: 24 }, 'aria-label': t(editor.configSet ? 'draftConfirmPreset' : 'draftConfirm'), checked: state.confirmed, disabled: blocked || !generator.editableDraft(), onChange: guarded(event => generator.confirm(event.target.checked)) }), t(editor.configSet ? 'draftConfirmPreset' : 'draftConfirm')),
           button('draftApply', () => generator.validateAndApply(), blocked || !state.available || !generator.canApply())) : null);
     }
+    
+    
     function ConfigSetsPanel({ editor, state, t, children }) {
       const [name, setName] = React.useState('');
       const [deleteId, setDeleteId] = React.useState(undefined);
@@ -1164,7 +1173,8 @@ window.__ModuleLoader__.load({
             h('p', { role: 'alert', style: paragraphStyle }, t('deleteConfigWarning') + ' ' + sets.configs.find(row => row.id === deleteId).name),
             h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12 } }, button('confirmDeleteConfig', () => act(() => editor.deleteConfig(deleteId, true))), button('cancelDeleteConfig', () => setDeleteId(undefined), false))) : null));
     }
-    function RouterPage({ editor, catalog, generator, t, view }) {
+
+function RouterPage({ editor, catalog, generator, t, view }) {
       const state = React.useSyncExternalStore(editor.subscribe, editor.getSnapshot, editor.getSnapshot);
       const catalogState = React.useSyncExternalStore(catalog?.subscribe ?? (() => () => {}), catalog?.getSnapshot ?? (() => emptyCatalog), catalog?.getSnapshot ?? (() => emptyCatalog));
       if (view === 'summary') return h('span', null, t('summary'));

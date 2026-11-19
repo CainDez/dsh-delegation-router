@@ -48,3 +48,46 @@ export function compilePluginConfig(raw = {}) {
   const policy = compileStoredConfig(copied.ui);
   return Object.freeze({ policy, ...(auditFile === undefined ? {} : { auditFile }) });
 }
+
+
+    const BORDER = '1px solid var(--dsw-alias-border-secondary, #777)';
+    const paragraphStyle = { maxWidth: '76ch', overflowWrap: 'anywhere' };
+    const fieldStyle = { display: 'grid', gap: 8, minWidth: 0 };
+    const inputStyle = { width: '100%', minWidth: 0, minHeight: 44, boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: BORDER, color: 'inherit', background: 'var(--dsw-alias-background-primary, transparent)', font: 'inherit' };
+    const buttonStyle = { ...inputStyle, width: 'auto', cursor: 'pointer' };
+
+export function ConfigSetsPanel({ editor, state, t, children }) {
+      const [name, setName] = React.useState('');
+      const [deleteId, setDeleteId] = React.useState(undefined);
+      const viewToken = editor.viewToken();
+      const sets = state.configSet, blocked = !state.canManageConfigs;
+      const active = sets.configs.find(row => row.id === sets.activeConfigId);
+      const validNew = editor.availableConfigName(name), validRename = editor.availableConfigName(name, sets.activeConfigId);
+      const button = (key, action, off = blocked) => h('button', { type: 'button', style: buttonStyle, disabled: off, onClick: () => editor.matchesView(viewToken) && action() }, t(key));
+      const act = async operation => { if (!editor.matchesView(viewToken)) return; if (await operation()) { setName(''); setDeleteId(undefined); } };
+      return h('section', { 'data-config-sets': true, style: { minWidth: 0, margin: '24px 0' }, 'aria-label': t('configSets') },
+        h('h3', null, t('configSets')), h('p', { style: paragraphStyle }, t('configSetsHelp')),
+        h('label', { style: fieldStyle }, h('span', null, t('activeConfig')),
+          h('select', { style: inputStyle, 'aria-label': t('activeConfig'), value: sets.activeConfigId, disabled: blocked, onChange: event => { setDeleteId(undefined); if (editor.matchesView(viewToken)) void editor.switchConfig(event.target.value); } },
+            sets.configs.map(row => h('option', { key: row.id, value: row.id }, row.name)))),
+        h('p', { style: paragraphStyle }, t('configSwitchHelp')),
+        children,
+        state.dirty || state.saving || state.receiptUnverified || state.savedButNotLive ? h('p', { role: 'status', style: paragraphStyle }, t('configNotConfirmed')) : null,
+        state.error ? h('p', { role: 'alert', style: paragraphStyle }, state.error) : null,
+        blocked ? h('p', { role: 'status', style: paragraphStyle }, t('configSetProtected')) : null,
+        h('details', null, h('summary', { style: { minHeight: 44, cursor: 'pointer', fontWeight: 600 } }, t('manageConfigs') + ' · ' + sets.configs.length + '/32'),
+          h('label', { style: { ...fieldStyle, marginTop: 16 } }, h('span', null, t('configName')),
+            h('input', { style: inputStyle, 'aria-label': t('configName'), maxLength: 120, value: name, disabled: blocked, placeholder: t('configNameHint'), onChange: event => setName(event.target.value) })),
+          name && !validRename ? h('p', { role: 'alert' }, t('invalidConfigName')) : null,
+          h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 16 } },
+            button('newConfig', () => act(() => editor.createConfig(name)), blocked || !validNew || sets.configs.length >= 32),
+            button('copyConfig', () => act(() => editor.createConfig(name, true)), blocked || !validNew || sets.configs.length >= 32),
+            button('renameConfig', () => act(() => editor.renameConfig(name)), blocked || !validRename || configName(name) === active?.name)),
+          h('p', { style: paragraphStyle }, t('configSetLimit')),
+          h('ul', { style: { listStyle: 'none', padding: 0, margin: 0 } }, sets.configs.map(row => h('li', { key: row.id, style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--dsw-alias-border-secondary, #777)' } },
+            h('span', { style: { flex: '1 1 200px', minWidth: 0, overflowWrap: 'anywhere' } }, row.name),
+            row.id === sets.activeConfigId ? h('span', null, t('configActiveBadge')) : h('button', { type: 'button', style: buttonStyle, disabled: blocked, 'aria-label': t('deleteConfig') + ' ' + row.name, onClick: () => { if (editor.matchesView(viewToken)) setDeleteId(row.id); } }, t('deleteConfig'))))),
+          deleteId && sets.configs.some(row => row.id === deleteId && row.id !== sets.activeConfigId) ? h('div', { role: 'group', 'aria-label': t('confirmDeleteConfig'), style: { marginTop: 16 } },
+            h('p', { role: 'alert', style: paragraphStyle }, t('deleteConfigWarning') + ' ' + sets.configs.find(row => row.id === deleteId).name),
+            h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 12 } }, button('confirmDeleteConfig', () => act(() => editor.deleteConfig(deleteId, true))), button('cancelDeleteConfig', () => setDeleteId(undefined), false))) : null));
+    }
