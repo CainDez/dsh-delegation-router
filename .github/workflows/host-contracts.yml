@@ -58,13 +58,19 @@ jobs:
         shell: bash
         env:
           DSH_VERSION: ${{ matrix.dsh }}
-          NPM_CONFIG_USERCONFIG: /dev/null
-          NPM_CONFIG_GLOBALCONFIG: /dev/null
         run: |
           if [[ ! "$DSH_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
             echo 'Expected an exact DSH version, not a tag, range, URL, or path.' >&2
             exit 1
           fi
+          # npm >= 11 refuses to start when userconfig and globalconfig resolve
+          # to the same file, so give each stream its own empty config file.
+          npmrc_user="$RUNNER_TEMP/dsh-npmrc-user"
+          npmrc_global="$RUNNER_TEMP/dsh-npmrc-global"
+          : > "$npmrc_user"
+          : > "$npmrc_global"
+          export NPM_CONFIG_USERCONFIG="$npmrc_user"
+          export NPM_CONFIG_GLOBALCONFIG="$npmrc_global"
           runtime_dir=$(mktemp -d "$RUNNER_TEMP/dsh-npm-runtime.XXXXXXXX")
           (
             cd "$runtime_dir"
