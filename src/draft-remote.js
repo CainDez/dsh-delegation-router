@@ -1,5 +1,6 @@
 import { DraftService, isDraftServiceError } from './draft-service.js';
 import { loadModelCatalog } from './model-catalog.js';
+import { hostDiagnostic } from './host-compatibility.js';
 import { normalizeGenerationRequest, validateDraftRequest, isDraftValidationError } from './config-draft.js';
 
 const codec = (name, parse) => ({ mode: 'strict', typeSymbol: 'dsh-delegation-router#' + name, create: () => ({ parse }) });
@@ -37,14 +38,29 @@ export function draftDescriptors() {
 export async function mountDraftRemote(service) {
   const registry = service.ctx.get('typert');
   if (!registry) return;
+  if (typeof registry.register !== 'function') throw Error('Settings RPC registry is incompatible');
+  const llm = service.ctx.llm;
+  const supports = (...methods) => methods.every(method => typeof llm?.[method] === 'function');
+  const catalog = supports('listProviders', 'listModels', 'resolveModelInfo');
+  const draft = supports('prepareCall', 'resolveModelInfo');
+  if (!catalog) hostDiagnostic(service.ctx, 'CATALOG_UNAVAILABLE', 'Plugin model catalog disabled: missing host LLM methods.');
+  if (!draft) hostDiagnostic(service.ctx, 'DRAFT_UNAVAILABLE', 'AI configuration drafts disabled: missing host LLM methods.');
+  if (!catalog && !draft) return;
   const { bindTypertRemote, RemoteError } = await import('@deepseek-ai/dsh-typert-protocol');
-  service.typertRemote = bindTypertRemote(service, 'delegationRouter');
-  service.draftService = new DraftService(service.ctx.llm);
+  if (typeof bindTypertRemote !== 'function' || typeof RemoteError !== 'function') throw Error('Settings RPC protocol is incompatible');
+  const remote = bindTypertRemote(service, 'delegationRouter');
+  const invocations = [...(draft ? draftDescriptors() : []), ...(catalog ? catalogDescriptors() : [])];
+  await registry.register({ package: 'dsh-delegation-router', face: 'host', schemas: [], model: { services: [], events: [], objects: [] }, invocations });
+  service.typertRemote = remote;
   service.draftRemoteError = RemoteError;
-  service.catalogRequests = new Set();
-  service.ctx.effect(() => () => { for (const controller of service.catalogRequests) controller.abort(); service.catalogRequests.clear(); }, 'delegationRouter.catalog');
-  service.ctx.effect(() => () => service.draftService.close(), 'delegationRouter.draft-generation');
-  registry.register({ package: 'dsh-delegation-router', face: 'host', schemas: [], model: { services: [], events: [], objects: [] }, invocations: [...draftDescriptors(), ...catalogDescriptors()] });
+  if (catalog) {
+    const requests = service.catalogRequests = new Set();
+    service.ctx.effect(() => () => { for (const controller of requests) controller.abort(); requests.clear(); }, 'delegationRouter.catalog');
+  }
+  if (draft) {
+    const drafts = service.draftService = new DraftService(llm);
+    service.ctx.effect(() => () => drafts.close(), 'delegationRouter.draft-generation');
+  }
 }
 
 export async function invokeDraftRemote(service, method, request, signal) {
@@ -54,6 +70,12 @@ export async function invokeDraftRemote(service, method, request, signal) {
   if (!RemoteError || service.ctx.invocation?.peer?.principal?.kind !== 'owner') {
     if (RemoteError) throw new RemoteError('gateway/forbidden', 'Configuration drafts require the authenticated owner settings connection.', {});
     throw Error('Configuration draft RPC is unavailable.');
+  }
+  if (method === 'modelCatalog' && !service.catalogRequests) {
+    throw new RemoteError('delegation-router/draft', 'Model catalog RPC is unavailable.', { code: 'CATALOG_UNAVAILABLE' });
+  }
+  if (method !== 'modelCatalog' && !service.draftService) {
+    throw new RemoteError('delegation-router/draft', 'Configuration draft RPC is unavailable.', { code: 'DRAFT_UNAVAILABLE' });
   }
   try {
     if (method === 'modelCatalog') {

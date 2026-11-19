@@ -250,11 +250,11 @@ test('forged subagentId in a native value is ignored in favor of catalog and own
 test('missing host identity observation, parent catalog and admitted name refuse before preparation',async()=>{
   for(const scenario of ['observer','catalog','parent-id','name-parameter']){
     const h=makeHost();
-    if(scenario==='observer')delete h.ctx.sessionQuery;
     if(scenario==='catalog')h.ctx.sessionQuery.observeSession=async()=>({header:{id:h.parent.id},[Symbol.dispose](){}});
     if(scenario==='parent-id')h.ctx.sessionQuery.observeSession=async()=>({header:{id:'foreign'},projections:{values:{subagentCatalog:[]}},[Symbol.dispose](){}});
     if(scenario==='name-parameter')h.ctx.tools.schemas=()=>[{name:'subagent',parameters:{properties:{provider:{},model:{},reasoning_effort:{}}}}];
     const service=new RouterService(h.ctx,h.config);await service[init]();
+    if(scenario==='observer')delete h.ctx.sessionQuery; // Also fence disappearance after startup.
     await assert.rejects(h.definitions.get('routed_subagent').definition.execute(request,h.exec),{code:'NATIVE_IDENTITY_UNAVAILABLE',definitelyNotStarted:true});
     assert.deepEqual(h.ctx.stages,[]);assert.deepEqual(service.runtime.journal.load().map(row=>row.status),['intent','rejected']);
   }
@@ -481,6 +481,33 @@ test('default native logging does not append private events or prompts into host
   const h = makeHost(); const service = new RouterService(h.ctx, h.config); await service[init]();
   await h.definitions.get('routed_subagent').definition.execute(request, h.exec);
   assert.deepEqual(h.events, []);
+});
+
+test('incompatible core host leaves no tools, RPCs, or audit effects', async () => {
+  for (const capability of ['sessionQuery', 'sessionProjections', 'tools', 'llm']) {
+    const h = makeHost();
+    h.services.set('typert', { register() { assert.fail('Do not mount RPCs on an inactive core'); } });
+    delete h.ctx[capability];
+    const before = structuredClone(h.config);
+    const service = new RouterService(h.ctx, h.config);
+    await assert.rejects(service[init](), { code: 'HOST_INCOMPATIBLE' });
+    assert.equal(h.definitions.size, 0);
+    assert.equal(h.handlers.size, 0);
+    assert.deepEqual(h.config, before);
+    await assert.rejects(access(h.config.auditFile + '.lock'), { code: 'ENOENT' });
+    assert.equal(service.runtime, undefined);
+  }
+});
+
+test('incompatible settings registry warns without disabling routing', async () => {
+  const h = makeHost();
+  h.ctx.logger.warn = message => h.events.push(message);
+  h.services.set('typert', {});
+  const service = new RouterService(h.ctx, h.config);
+  await service[init]();
+  assert.match(h.events[0], /SETTINGS_RPC_UNAVAILABLE/);
+  assert.equal(service.draftService, undefined);
+  assert.equal((await h.definitions.get('routed_subagent').definition.execute(request, h.exec)).childId, 'child');
 });
 
 test('runtime recovery failure closes journal ownership before initialization rejects', async () => {

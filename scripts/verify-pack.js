@@ -28,7 +28,7 @@ try {
     const relative=member.slice('package/'.length);
     if(relative!=='package.json')assert.ok(readFileSync(join(cwd,relative)).equals(readFileSync(join(root,relative))),'Archive differs from source: '+relative);
   }
-  for(const relative of ['src/plugin.js','client.js','cordis.patch.yml','assets/icon.svg'])assert.ok(existsSync(join(cwd,relative)),'Missing runtime entry: '+relative);
+  for(const relative of ['src/plugin.js','src/router-service.js','src/host-compatibility.js','client.js','cordis.patch.yml','assets/icon.svg'])assert.ok(existsSync(join(cwd,relative)),'Missing runtime entry: '+relative);
   for(const relative of ['test','scripts'])assert.equal(existsSync(join(cwd,relative)),false,'Development payload was shipped: '+relative);
   // Add external QA only AFTER checking the untouched production payload. Tests
   // sit beside extracted src/client so their ../ imports test the archive, not checkout.

@@ -22,6 +22,8 @@ function harness({ resolve, prepare, chunks, stream, timeoutMs = 1000 } = {}) {
   const config = Object.freeze({ enabled: false, limits: Object.freeze({ maxActivePerModel: 3 }) });
   const llm = {
     config,
+    listProviders() { return []; },
+    listModels() { assert.fail('An empty catalog must not query models'); },
     async resolveModelInfo(provider, model, signal) {
       calls.metadata.push({ provider, model, signal });
       return resolve ? resolve(provider, model, signal, calls.metadata.length) : metadata({ provider, model });

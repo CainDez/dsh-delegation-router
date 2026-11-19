@@ -14,7 +14,7 @@ const modules = {
   '@deepseek-ai/cosmokit': 'export const isVolatile=()=>false;',
   zod: schema,
   '@deepseek-ai/dsh-tools': 'export const defineTool=value=>value;',
-  '@deepseek-ai/dsh-tools/pipeline': 'export class ToolExecutionPipeline {}',
+  '@deepseek-ai/dsh-tools/pipeline': 'export class ToolExecutionPipeline { prepare(){} dispatch(){} complete(){} }',
   '@deepseek-ai/dsh-subagent': 'export const parentAgentOptionsForDelegation=parent=>({...parent.session.requestHeader().config});'
 };
 const hooks = registerHooks({ resolve(specifier, context, next) {
@@ -38,8 +38,8 @@ function host(config = {}) {
   const services = new Map(), tools = new Map(), effects = [];
   const ctx = {
     services, get: name => name === 'profileContext' ? { dir: profileDir } : services.get(name),
-    agents: { get() {} }, tools: { register: (tool, options) => tools.set(tool.name, { tool, options }) },
-    llm: {}, on() {}, effect: fn => effects.push(fn()),
+    agents: { get() {} }, tools: { register: (tool, options) => tools.set(tool.name, { tool, options }), executable() {}, schemas() {} },
+    llm: { resolveModelInfo() {}, resolveCallConfig() {} }, sessionQuery: { observeSession() {} }, on() {}, effect: fn => effects.push(fn()),
     sessionProjections: { async register(projection) { ctx.projection = projection; return { stateOf: () => null }; } }
   };
   const service = new RouterService(ctx, config);

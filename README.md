@@ -95,16 +95,33 @@
 
 ## 安装与开发
 
-运行环境：Node.js ≥22.15，DSH 0.2.2-rc.3；使用宿主已有模型目录与账号。此插件为第三方独立插件，模型调用费用由所选提供方决定。
+运行环境：Node.js ≥22.15，DSH 准入范围见[包清单](<package.json#L23-L26>)。插件使用宿主已有模型目录与账号，由所选提供方决定模型调用费用。
 
 ```sh
 npm test
 npm run check
 npm pack --ignore-scripts
-node scripts/verify-pack.js ./dsh-delegation-router-0.11.1.tgz
+node scripts/verify-pack.js ./dsh-delegation-router-0.11.2.tgz
+```
+
+以下命令安装历史发布包 `v0.11.1`，不包含当前源码的新兼容策略。要试当前修改，请先验证本地归档，并在测试 Profile 中安装。
+
+```sh
 dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.11.1/dsh-delegation-router-0.11.1.tgz
 ```
 
-安装前检查未结委派并备份配置。配置验收优先通过文件和宿主接口核对，无需 Computer Use。宿主库隔离检查可运行 `scripts/verify-host-api.js`、`scripts/verify-host-model-catalog.js`、`scripts/verify-host-lifecycle.js`、`scripts/verify-host-draft.js`，参数为对应宿主的 package.json 路径；它们不连接运行 Profile、不创建 Agent、不发起推理。
+安装前检查未结委派并备份配置。
+
+### DSH 兼容策略
+
+- **准入范围以源码包清单为准**：`engines.dsh` 当前允许 `0.2.2-rc.3`，以及从 `0.2.2-rc.5` 起、低于 `0.2.2` 正式版的预发布；不包含 `rc.4`。范围内未来版本可以尝试加载，不代表已经逐版验证。安装包直接从相同源码打包，打包检查核对整个清单；不在打包时注入或改写版本范围。
+- **加载后按能力检查**：缺少核心模块或关键委派能力时，不启用路由；设置 RPC 不可用不会阻止路由，模型目录和 AI 草稿按各自依赖启用。每次派发仍走原生守卫并检查回执契约，不自动回退到其他模型，也不改写配置。
+- **CI 仅验证，不授予兼容性**：默认对官方 npm 运行时 `rc.3` 和 `rc.5` 跑隔离契约；可手动传入一个新候选版本验证，包括尚未纳入范围的版本。通过测试不会自动加入范围、修改清单或发布；需要调整范围时，先在源码中审查并提交变更，再从该提交打包。
+
+本地也可运行以下命令（第二个参数可省略；提供时要求与宿主实际版本一致）。桌面 ASAR 请用对应 Electron 可执行文件加 `ELECTRON_RUN_AS_NODE=1` 替代 `node`。检查不连接运行中的 Profile、不创建 Agent、不发起推理。
+
+```sh
+node scripts/verify-host-matrix.js /path/to/dsh/package.json 0.2.2-rc.5
+```
 
 采用 [MIT 许可证](<LICENSE>)。[包清单](<package.json>)的 `private: true` 防止误发 npm，不影响归档安装。
