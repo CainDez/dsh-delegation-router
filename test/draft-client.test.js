@@ -67,6 +67,20 @@ function flatten(node) {
   if (typeof node.type === 'function') return flatten(node.type(node.props));
   return [node, ...flatten(node.props?.children)];
 }
+const workspaceProps = h => ({ editor: h.editor, catalog: h.catalog, generator: h.generator, t, view: 'page' });
+const workspacePanel = (nodes, key) => nodes.find(node => node?.props?.['data-workspace-panel'] === key);
+const workspaceNav = (nodes, key) => nodes.find(node => node?.props?.['data-workspace-nav'] === key);
+function workspace(props) {
+  // Persist RouterPage's navigation state between renders; nested components use the default stub.
+  const useState = React.useState;
+  let panel;
+  return () => {
+    let tree;
+    React.useState = initial => [panel ?? initial, next => { panel = next; }];
+    try { tree = plugin.RouterPage(props); } finally { React.useState = useState; }
+    return flatten(tree);
+  };
+}
 const wizard = h => flatten(plugin.DraftWizard({ generator: h.generator, editor: h.editor, catalog: h.catalog, t }));
 const button = (h, key) => wizard(h).find(node => node?.type === 'button' && node.props.children.includes(t(key)));
 const flush = async () => { for (let i = 0; i < 15; i++) await Promise.resolve(); };
@@ -114,11 +128,139 @@ test('failed RPC mount reports unavailable draft UI without removing manual edit
   gate.reject(Error('mount failed')); await flush();
   assert.equal(mounted.props.generator.getSnapshot().available, false);
   assert.equal(mounted.props.generator.getSnapshot().error, t('draftUnavailable'));
-  const nodes = flatten(plugin.RouterPage(mounted.props));
-  assert.ok(nodes.includes(t('draftUnavailable'))); assert.ok(nodes.includes(t('manualTitle')));
-  const add = nodes.find(row => row?.type === 'button' && row.props.children.includes(t('addCandidate')));
+  const render = workspace(mounted.props);
+  workspaceNav(render(), 'draft').props.onClick();
+  const draft = workspacePanel(render(), 'draft');
+  assert.equal(draft.props.hidden, false);
+  assert.ok(flatten(draft).includes(t('draftUnavailable')));
+  workspaceNav(render(), 'pool').props.onClick();
+  const pool = workspacePanel(render(), 'pool');
+  assert.equal(pool.props.hidden, false);
+  const add = flatten(pool).find(row => row?.type === 'button' && row.props.children.includes(t('addCandidate')));
   assert.equal(add.props.disabled, false); assert.equal(mounted.props.editor.editable(), true);
   assert.equal(h.calls.length, 0); assert.equal(h.mutations.length, 0); await mounted.dispose();
+});
+
+test('workspace navigation shows only preset details by default and does not write settings', async testContext => {
+  const h = await harness(testContext, v4Fixture()), before = h.current();
+  const render = workspace(workspaceProps(h));
+  const assertPanel = (nodes, active) => {
+    for (const key of ['details', 'pool', 'draft']) {
+      assert.equal(workspacePanel(nodes, key).props.hidden, key !== active, key);
+      assert.equal(workspaceNav(nodes, key).props['aria-pressed'], key === active, key);
+    }
+  };
+  let nodes = render();
+  assertPanel(nodes, 'details');
+  for (const key of ['pool', 'draft', 'details']) {
+    workspaceNav(nodes, key).props.onClick();
+    nodes = render();
+    assertPanel(nodes, key);
+    assert.ok(nodes.some(row => row?.props?.['data-autosave']));
+  }
+  assert.equal(h.pendingTimers.size, 0);
+  assert.deepEqual(h.current(), before);
+  assert.equal(h.editor.getSnapshot().dirty, false);
+  assert.equal(h.mutations.length, 0); assert.equal(h.calls.length, 0);
+});
+
+function v4Fixture(candidates = [{ id: 'shared', name: 'Shared low effort', ...low }]) {
+  const ui = { ...copy(plugin.emptyDraft()), schemaVersion: 4, enabled: true, activeConfigId: 'a', candidates, configs: [
+    { id: 'a', name: 'Alpha preset', defaultCandidateId: 'shared', overrides: [{ id: 'shared', name: 'Alpha role' }] },
+    { id: 'b', name: 'Beta preset', defaultCandidateId: 'shared', overrides: [{ id: 'shared', name: 'Beta role' }] }
+  ] };
+  return { value: { ui }, user: { ui: copy(ui) } };
+}
+
+test('v4 wizard selects its generator from the catalog, but delegation scope from the unambiguous shared pool', async testContext => {
+  const fixture = v4Fixture([
+    { id: 'shared', name: 'Shared low effort', ...low },
+    { id: 'dupe-1', name: 'Ambiguous high 1', ...high },
+    { id: 'dupe-2', name: 'Ambiguous high 2', ...high }
+  ]);
+  const h = await harness(testContext, fixture);
+  assert.equal(button(h, 'draftGenerate').props.disabled, true); // Fixture input also includes the now-ambiguous high effort.
+  assert.equal(h.generator.setScope([]), true);
+  const nodes = wizard(h);
+  const generator = nodes.find(row => row?.type === 'select' && row.props['aria-label'] === t('draftGenerator'));
+  assert.ok(flatten(generator).some(row => row?.type === 'option' && row.props.value === plugin.modelKey(plain)));
+  generator.props.onChange({ target: { value: plugin.modelKey(plain) } });
+  const region = nodes.find(row => row?.props?.role === 'region' && row.props['aria-label'] === t('draftScope'));
+  const labels = flatten(region).filter(row => row?.type === 'label');
+  assert.equal(labels.length, 1);
+  assert.ok(flatten(labels[0]).includes('Shared low effort · p / m / low'));
+  assert.ok(nodes.includes(t('draftDuplicateScope')));
+  const checkbox = flatten(labels[0]).find(row => row?.type === 'input' && row.props.type === 'checkbox');
+  assert.equal(checkbox.props.disabled, false);
+  checkbox.props.onChange({ target: { checked: true } });
+  h.generate = async () => ({ ...generated(), candidates: [generated().candidates[0]] });
+  const generate = button(h, 'draftGenerate');
+  assert.equal(generate.props.disabled, false);
+  assert.equal(await generate.props.onClick(), true);
+  assert.equal(h.calls.length, 1);
+  assert.deepEqual(h.calls[0].request.generator, plain);
+  assert.deepEqual(h.calls[0].request.scope, [low]);
+  assert.equal(h.mutations.length, 0);
+});
+
+test('generation through the settings form focuses review only when the draft panel is visible', async testContext => {
+  for (const hidden of [false, true]) {
+    const h = await harness(testContext, v4Fixture());
+    h.generator.setScope([low]);
+    h.generate = async () => ({ ...generated(), candidates: [generated().candidates[0]] });
+    const calls = [];
+    const heading = { closest: selector => { assert.equal(selector, '[hidden]'); return hidden ? {} : null; },
+      focus: options => calls.push(['focus', options.preventScroll]), scrollIntoView: options => calls.push(['scroll', options.block]) };
+    const ref = { current: null };
+    let requested = false, effects = [];
+    const original = { useState: React.useState, useRef: React.useRef, useEffect: React.useEffect };
+    function render() {
+      effects = [];
+      Object.assign(React, {
+        useState: value => value === false ? [requested, next => { requested = next; }] : original.useState(value),
+        useRef: () => ref,
+        useEffect: effect => effects.push(effect)
+      });
+      try {
+        const nodes = wizard(h);
+        ref.current = nodes.find(node => node?.type === 'h3' && node.props.ref === ref) ? heading : null;
+        for (const effect of effects) effect();
+        return nodes;
+      } finally { Object.assign(React, original); }
+    }
+    const start = render().find(node => node?.type === 'button' && node.props.children.includes(t('draftGenerate')));
+    assert.equal(await start.props.onClick(), true);
+    assert.deepEqual(calls, []);
+    assert.ok(render().includes(t('draftReview')));
+    assert.deepEqual(calls, hidden ? [] : [['focus', true], ['scroll', 'nearest']]);
+    assert.equal(requested, false);
+    assert.equal(h.mutations.length, 0);
+  }
+});
+
+test('a generated draft review and its navigation badge never appear in another preset', async testContext => {
+  const h = await harness(testContext, v4Fixture());
+  assert.equal(h.generator.setScope([low]), true);
+  h.generate = async () => ({ ...generated(), candidates: [generated().candidates[0]] });
+  assert.equal(await h.generator.generate(), true);
+  const render = workspace(workspaceProps(h));
+  workspaceNav(render(), 'draft').props.onClick();
+  let nodes = render();
+  assert.ok(flatten(workspaceNav(nodes, 'draft')).includes(t('draftPendingBadge')));
+  assert.ok(flatten(workspacePanel(nodes, 'draft')).some(row => row?.props?.['data-draft-review']));
+  assert.ok(button(h, 'draftApply'));
+
+  assert.equal(await h.editor.switchConfig('b'), true);
+  assert.ok(h.generator.getSnapshot().draft); // The stale draft is retained, not silently deleted.
+  nodes = render();
+  const draft = workspacePanel(nodes, 'draft');
+  assert.equal(draft.props.hidden, false);
+  assert.ok(flatten(draft).includes('Beta preset'));
+  assert.equal(flatten(draft).some(row => row?.props?.['data-draft-review']), false);
+  assert.equal(flatten(draft).includes(t('draftApply')), false);
+  assert.equal(flatten(draft).includes('Review these suggestions.'), false);
+  assert.equal(flatten(workspaceNav(nodes, 'draft')).includes(t('draftPendingBadge')), false);
+  assert.equal(h.mutations.length, 1); // Only switching the active preset writes settings.
 });
 
 // Generation is a detached, explicitly invoked operation, not an autosave source.
@@ -499,17 +641,27 @@ test('wizard exposes before/draft review fee warning immutable profiles and expl
     const translate = key => plugin.dictionaries[language][key] ?? key;
     const nodes = flatten(plugin.DraftWizard({ generator: h.generator, editor: h.editor, catalog: h.catalog, t: translate }));
     for (const key of ['draftIntro','draftCost','draftBefore','draftAfter','draftConfirm','draftApply','draftReady']) assert.ok(nodes.includes(translate(key)), key);
-    assert.ok(nodes.some(row => row?.type === 'table'));
+    const review = flatten(nodes.find(row => row?.props?.['data-draft-review']));
+    assert.equal(review.some(row => row?.type === 'table'), false);
+    const cards = review.filter(row => row?.type === 'article');
+    assert.equal(cards.length, 2);
+    for (const [index, card] of cards.entries()) {
+      const comparison = flatten(card).find(row => row?.props?.style?.gridTemplateColumns?.includes('auto-fit'));
+      const fields = flatten(comparison);
+      assert.match(comparison.props.style.gridTemplateColumns, /100%/);
+      assert.ok(fields.includes(translate('draftBefore'))); assert.ok(fields.includes(translate('draftAfter')));
+      assert.ok(flatten(card).includes(index === 0 ? 'p / m / low' : 'p / m / high'));
+      assert.equal(fields.filter(row => row?.type === 'textarea' && row.props.maxLength === 1000 && row.props.rows === 4 && row.props.style.resize === 'vertical').length, 1);
+      assert.equal(fields.some(row => row?.type === 'select'), false);
+    }
     assert.ok(nodes.some(row => row?.type === 'textarea' && row.props.maxLength === 8000));
-    assert.equal(nodes.filter(row => row?.type === 'textarea' && row.props.maxLength === 1000 && row.props.rows === 4 && row.props.style.resize === 'vertical').length, 2);
-    assert.ok(nodes.some(row => row?.props?.role === 'region' && row.props.style.overflowX === 'auto' && row.props.tabIndex === 0));
     const apply = nodes.find(row => row?.type === 'button' && row.props.children.includes(translate('draftApply')));
     assert.equal(apply.props.disabled, true);
     assert.equal(nodes.some(row => row?.type === 'input' && row.props.type !== 'search' && /provider|model|effort/.test(row.props['aria-label'] ?? '')), false);
   }
   assert.equal(button(h, 'draftApply').props.disabled, true); h.generator.confirm(true); assert.equal(button(h, 'draftApply').props.disabled, false);
-  const nodes = flatten(plugin.RouterPage({ editor: h.editor, catalog: h.catalog, generator: h.generator, t, view: 'page' }));
-  assert.ok(nodes.includes(t('manualTitle'))); assert.ok(nodes.some(row => row?.props?.['data-autosave']));
-  assert.ok(nodes.some(row => row?.type === 'button' && row.props.children.includes(t('addCandidate'))));
+  const nodes = flatten(plugin.RouterPage(workspaceProps(h)));
+  assert.ok(nodes.some(row => row?.props?.['data-autosave']));
+  assert.ok(flatten(workspacePanel(nodes, 'pool')).some(row => row?.type === 'button' && row.props.children.includes(t('addCandidate'))));
   assert.deepEqual(Object.keys(plugin.dictionaries.en).sort(), Object.keys(plugin.dictionaries.zh).sort());
 });

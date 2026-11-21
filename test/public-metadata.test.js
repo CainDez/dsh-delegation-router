@@ -38,6 +38,6 @@ test('README documents packaging and versioned remote installation', async () =>
   const text = await read('README.md');
   assert.ok(text.includes('npm pack --ignore-scripts'));
   assert.ok(text.includes('node scripts/verify-pack.js ./dsh-delegation-router-' + manifest.version + '.tgz'));
-  const archive = 'https://github.com/CainDez/dsh-delegation-router/releases/download/v0.11.1/dsh-delegation-router-0.11.1.tgz';
+  const archive = `https://github.com/CainDez/dsh-delegation-router/releases/download/v${manifest.version}/dsh-delegation-router-${manifest.version}.tgz`;
   assert.ok(text.includes('dsh plugin --profile desktop add ' + archive));
 });

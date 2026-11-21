@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { normalizeConfigSets, compileStoredConfig } from '../src/config-sets.js';
 
 let definition;
-const React = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useState: value => [value, () => {}], useSyncExternalStore: (_subscribe, snapshot) => snapshot() };
+const React = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useState: value => [value, () => {}], useSyncExternalStore: (_subscribe, snapshot) => snapshot(), useRef: value => ({ current: value }), useEffect() {} };
 vm.runInNewContext(await readFile(new URL('../client.js', import.meta.url), 'utf8'), { AbortController, window: { __ModuleLoader__: { load: value => { definition = value; } } } });
 const plugin = definition.factory(() => React);
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -377,15 +377,46 @@ test('generated presets reject missing/ambiguous pool routes without adding or r
 
 test('multi-preset UI keeps model selectors only in the global pool, not preset role controls', context => {
   const h = harness(context), nodes = flatten(plugin.RouterPage({ editor: h.editor, t }));
-  const roles = nodes.filter(row => row?.props?.['data-candidate']);
-  const pools = nodes.filter(row => row?.props?.['data-pool-candidate']);
+  const details = nodes.find(row => row?.props?.['data-workspace-panel'] === 'details');
+  const pool = nodes.find(row => row?.props?.['data-workspace-panel'] === 'pool');
+  const roles = flatten(details).filter(row => row?.props?.['data-candidate']);
+  const pools = flatten(pool).filter(row => row?.props?.['data-pool-candidate']);
   assert.equal(roles.length, 1); assert.equal(pools.length, 1);
   assert.equal(flatten(roles).filter(row => row?.type === 'select').length, 0);
   assert.equal(flatten(pools).filter(row => row?.type === 'select').length, 2);
-  assert.ok(nodes.some(row => row?.props?.['data-shared-pool']));
+  assert.equal(pool.props['data-shared-pool'], true);
+  assert.equal(flatten(details).some(row => row?.props?.['data-pool-candidate']), false);
+  assert.equal(flatten(pool).some(row => row?.props?.['data-candidate']), false);
 });
 
-test('choose a saved default at the top even without a catalog; autosave preserves all other preset data', async context => {
+test('a new v4 candidate can receive its initial name in the global model pool before saving', async context => {
+  const h = harness(context), before = copy(h.snapshot().user.ui);
+  const catalog = new plugin.ModelCatalog(h.ctx); context.after(() => catalog.dispose());
+  catalog.publish({ status: 'ready', groups: [{ id: 'p', name: 'P', models: [{ id: 'one' }, { id: 'two' }] }], failures: [] });
+  const pool = () => flatten(flatten(plugin.RouterPage({ editor: h.editor, catalog, t }))
+    .find(row => row?.props?.['data-workspace-panel'] === 'pool'));
+  const candidate = id => pool().find(row => row?.props?.['data-pool-candidate'] === id);
+  const field = (row, type, key) => flatten(row).find(node => node?.type === type && node.props['aria-label'] === t(key));
+  assert.equal(field(candidate('same-id'), 'input', 'poolName'), undefined);
+  pool().find(row => row?.type === 'button' && row.props.children.includes(t('addCandidate'))).props.onClick();
+  const { id } = h.editor.getSnapshot().draft.candidates.at(-1);
+  const name = field(candidate(id), 'input', 'poolName');
+  assert.equal(candidate(id).props.open, true);
+  assert.equal(name.props.value, ''); assert.equal(name.props.disabled, false);
+  name.props.onChange({ target: { value: 'Shared new model' } });
+  assert.equal(h.mutations.length, 0); assert.equal(h.timers.size, 0);
+  field(candidate(id), 'select', 'chooseModel').props.onChange({ target: { value: plugin.modelKey({ provider: 'p', model: 'two' }) } });
+  assert.equal(h.timers.size, 1); assert.equal(h.mutations.length, 0);
+  assert.equal(await h.editor.save(), true);
+  const saved = h.snapshot().user.ui;
+  assert.equal(saved.candidates.at(-1).id, id);
+  assert.equal(saved.candidates.at(-1).name, 'Shared new model');
+  assert.equal(saved.candidates.at(-1).model, 'two');
+  assert.deepEqual(saved.configs, before.configs);
+  assert.equal(field(candidate(id), 'input', 'poolName'), undefined);
+});
+
+test('preset details offer a saved default without a catalog; autosave preserves all other preset data', async context => {
   const ui = collection();
   ui.candidates[0].description = 'Global description';
   ui.candidates.push({ ...ui.candidates[0], id: 'extra', effort: 'high' });
@@ -394,7 +425,9 @@ test('choose a saved default at the top even without a catalog; autosave preserv
   const h = harness(context, ui);
   const nodes = flatten(plugin.RouterPage({ editor: h.editor, t }));
   const isPicker = row => row?.type === 'select' && row.props['aria-label'] === t('defaultCandidate');
-  const picker = flatten(nodes.find(row => row?.props?.['data-config-sets'])).find(isPicker);
+  const details = nodes.find(row => row?.props?.['data-workspace-panel'] === 'details');
+  assert.equal(details.props.hidden, false);
+  const picker = flatten(details).find(isPicker);
   assert.ok(picker); assert.equal(picker.props.disabled, false); assert.equal(picker.props.value, 'same-id');
   assert.equal(nodes.filter(isPicker).length, 1);
   assert.deepEqual(flatten(picker).filter(row => row?.type === 'option' && row.props.value).map(row => [row.props.value, row.props.children[0]]), [
