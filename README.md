@@ -2,6 +2,8 @@
 
 主 Agent 已决定委派后，从当前预设的委派模型中选择一个固定档案，通过 DSH 原生 subagent 创建文本子会话。插件不决定是否委派、不切换主模型、不编排 Agent Teams，也不增加分类模型调用或评分系统。
 
+支持创建前选模接口的宿主可让原生 `subagent`、`subagent_fork`（包括 Agent Teams 新成员）和 `routed_subagent` 共用当前预设，统一由「启用创建路由」控制。`router_status.nativeRouteResolverAvailable` 显示宿主是否支持；接口缺失时只保留既有 `routed_subagent` 路由，不宣称已接管原生工具。参见[宿主接入和验证说明](<docs/unified-native-routing.md>)。
+
 ## 配置
 
 每个候选都是一个完整执行档案：名称、固定 `provider / model / effort` 和适用说明。同一模型可以配置多个真实思考等级，主 Agent 选择整个档案，运行时不临时改档。
@@ -98,13 +100,13 @@ v5 顶层 `candidates` 是草稿池；各预设内的 `candidates` 是运行时�
 npm test
 npm run check
 npm pack --ignore-scripts
-node scripts/verify-pack.js ./dsh-delegation-router-0.12.0.tgz
+node scripts/verify-pack.js ./dsh-delegation-router-0.13.0.tgz
 ```
 
-以下命令从 GitHub Release 安装或更新到 `v0.12.0`。此地址固定到该版本，不会自动跟随以后的发布。
+以下命令从 GitHub Release 安装或更新到 `v0.13.0`。此地址固定到该版本，不会自动跟随以后的发布。
 
 ```sh
-dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.12.0/dsh-delegation-router-0.12.0.tgz
+dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.13.0/dsh-delegation-router-0.13.0.tgz
 ```
 
 安装前检查未结委派并备份配置。

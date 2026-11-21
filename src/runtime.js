@@ -47,13 +47,14 @@ export class SubagentRouter {
     const latest=new Map(records.map(record=>[record.decisionId,record]));
     this.recovered=new Set([...latest.values()].filter(record=>['intent','accepted','unknown'].includes(record.status)).map(record=>record.decisionId));
   }
-  assertParent(parent, signal) {
+  assertParent(parent, signal, allowDescendant = false) {
     parentId(parent); assertActive(signal);
     if (this.#closed || !this.config.enabled) fail('ROUTER_DISABLED','Child router is disabled');
-    if (parent.session.header?.origin === 'subagent' || parent.session.header?.parentSession !== undefined) fail('ROOT_ONLY','This version only routes root Agent delegations');
+    if (!allowDescendant && (parent.session.header?.origin === 'subagent' || parent.session.header?.parentSession !== undefined)) fail('ROOT_ONLY','Explicit routed_subagent is root-only');
   }
-  async plan(parent, raw, signal) {
-    this.assertParent(parent,signal); const request = normalizeRequest(raw);
+  async plan(parent, raw, signal, nativeEntry) {
+    const allowDescendant = nativeEntry !== undefined;
+    this.assertParent(parent,signal,allowDescendant); const request = normalizeRequest(raw);
     if (request.policy_revision && request.policy_revision !== this.revision) fail('STALE_POLICY','Read delegation_routes again');
     const candidateId = request.candidate_id ?? this.config.defaultCandidateId;
     const candidate = this.config.candidates.find(item => item.id === candidateId);
@@ -66,15 +67,17 @@ export class SubagentRouter {
       catch (e) { if (combined.aborted) throw e; /* A failed selected target cannot trigger another route. */ }
       if (!combined.aborted) catalog.set(candidate.id,normalizeMetadata(info));
     },signal);
-    this.assertParent(parent,signal);
-    const facts = { payload: { backend:'spawn', inputModalities:['text'], context:{tokens:this.estimateContext(request,parent)} } };
+    this.assertParent(parent,signal,allowDescendant);
+    const backend = nativeEntry === 'subagent_fork' ? 'fork' : 'spawn';
+    const facts = { payload: { backend, inputModalities:['text'], context:{tokens:this.estimateContext(request,parent,backend)} } };
     const proposal = request.candidate_id === undefined ? undefined : { candidateId:request.candidate_id };
     const route = Object.freeze(selectRoute(this.config,{facts,proposal,catalog,authorizedRoutes:this.authorization(parent)}));
     const options = Object.freeze({ provider:route.provider, model:route.model, ...(route.effort === null ? {} : {reasoningEffort:route.effort}) });
-    const plan = Object.freeze({ request, route, options, facts, catalog, proposal });
+    const plan = Object.freeze({ request, route, options, facts, catalog, proposal, nativeEntry });
     this.validateSelected(parent,plan);
-    await this.prepareBounded(s => this.preflight(options,s),signal);
-    this.assertParent(parent,signal);
+    // The resolver's host will preflight its final, authorized native arguments itself.
+    if (!nativeEntry) await this.prepareBounded(s => this.preflight(options,s),signal);
+    this.assertParent(parent,signal,allowDescendant);
     // Parent identity and authorization are checked after every asynchronous preparation stage.
     this.validateSelected(parent,plan);
     return plan;
@@ -91,49 +94,92 @@ export class SubagentRouter {
     const promise = this.#run(parent,raw,exec);
     this.#runs.set(key,{fingerprint,promise}); return promise;
   }
+  /** One reservation/audit transition path for native, fork, and legacy routed creation. */
+  #lease(parent, plan, exec) {
+    const { route, nativeEntry } = plan;
+    const pid = parentId(parent), decisionId = randomUUID();
+    const modelId = JSON.stringify([route.provider,route.model]);
+    const base = { decisionId,parentId:pid,policyRevision:this.revision,modelId,candidateId:route.candidateId,provider:route.provider,model:route.model,effort:route.effort,kind:'subagent',
+      ...(nativeEntry ? {entry:nativeEntry,routingReason:route.reason} : {}) };
+    const record = (status,extra={}) => this.journal.append({...base,status,time:this.now(),...extra});
+    let phase = 'planned', reservation, acceptedChildId;
+    const assertCurrent = () => { this.assertParent(parent,exec.signal,!!nativeEntry); this.validateSelected(parent,plan); };
+    const untrack = () => {
+      const n = (this.#starting.get(pid) ?? 1) - 1;
+      if (n > 0) this.#starting.set(pid,n);
+      else { this.#starting.delete(pid); for (const k of this.#ended.keys()) if (k.startsWith(pid+'\0')) this.#ended.delete(k); }
+    };
+    const beforeStart = () => {
+      if (phase !== 'planned') fail('CALL_ID_REUSE','This route lease was already used');
+      assertCurrent();
+      reservation = this.ledger.reserve(pid,modelId);
+      try { record('intent'); }
+      catch (error) {
+        this.ledger.unknown(reservation); this.recovered.add(decisionId); phase = 'done';
+        throw error;
+      }
+      this.#starting.set(pid,(this.#starting.get(pid) ?? 0)+1);
+      phase = 'starting';
+      // Durable intent may fail or synchronously invalidate admission. Do not
+      // let the native host begin creation after such a change.
+      try { assertCurrent(); }
+      catch (error) { failStart(error,true); throw error; }
+    };
+    const failStart = (error, definitelyNotStarted = false) => {
+      if (phase !== 'starting') return;
+      phase = 'done';
+      if (definitelyNotStarted) {
+        this.ledger.reject(reservation);
+        try { record('rejected',{code:error?.code ?? 'REJECTED'}); }
+        catch { this.ledger.pause(pid); this.recovered.add(decisionId); }
+      } else {
+        this.ledger.unknown(reservation); this.recovered.add(decisionId);
+        if (acceptedChildId) this.#byChild.delete(pid+'\0'+acceptedChildId);
+        try { record('unknown',{code:error?.code ?? 'START_FAILED',...(acceptedChildId ? {childId:acceptedChildId} : {})}); } catch {}
+      }
+      untrack();
+    };
+    const accepted = childId => {
+      if (phase !== 'starting') fail('INVALID_ACTIVATION','No pending start for this route lease');
+      try {
+        if (typeof childId !== 'string' || !childId.trim() || childId.length > 500 || childId === pid) fail('START_UNKNOWN','Native activation has no verified child Session identity');
+        acceptedChildId = childId;
+        this.ledger.accept(reservation,childId);
+        const key = pid+'\0'+childId;
+        this.#byChild.set(key,{reservation,base});
+        record('accepted',{childId});
+        const ended = this.#ended.get(key);
+        phase = 'done'; untrack();
+        if (ended) { this.#ended.delete(key); this.settle(pid,childId,ended); }
+      } catch (error) { failStart(error); throw error; }
+    };
+    return { decisionId, assertCurrent, beforeStart, accepted, failStart };
+  }
+  async prepareNative(parent, raw, exec, entry) {
+    if (entry !== 'subagent' && entry !== 'subagent_fork') fail('INVALID_NATIVE_SELECTION','Unsupported native entry');
+    const plan = await this.plan(parent,raw,exec.signal,entry);
+    const lease = this.#lease(parent,plan,exec);
+    return Object.freeze({provider:plan.route.provider,model:plan.route.model,effort:plan.route.effort,
+      assertCurrent:lease.assertCurrent,beforeStart:lease.beforeStart,accepted:lease.accepted,unknown:lease.failStart});
+  }
   async #run(parent,raw,exec) {
     const plan = await this.plan(parent,raw,exec.signal); const {request,route,options} = plan;
-    this.assertParent(parent,exec.signal); this.validateSelected(parent,plan);
-    const pid = parentId(parent), decisionId = randomUUID();
-    // Share the per-model quota across all candidates for this exact provider/model.
-    const modelId = JSON.stringify([route.provider,route.model]);
-    const reservation = this.ledger.reserve(pid,modelId);
-    const base = { decisionId,parentId:pid,policyRevision:this.revision,modelId,candidateId:route.candidateId,provider:route.provider,model:route.model,effort:route.effort,kind:'subagent' };
-    const record = (status,extra={}) => this.journal.append({...base,status,time:this.now(),...extra});
-    let invoked = false, tracking = false, acceptedChildId;
+    const lease = this.#lease(parent,plan,exec);
+    let invoked = false;
     try {
-      record('intent'); this.assertParent(parent,exec.signal); this.validateSelected(parent,plan);
-      this.#starting.set(pid,(this.#starting.get(pid) ?? 0)+1); tracking=true;
+      lease.beforeStart();
       const args = { prompt:request.prompt,description:request.description,provider:options.provider,model:options.model,
         ...(options.reasoningEffort === undefined ? {} : {reasoning_effort:options.reasoningEffort}),...(request.cwd ? {cwd:request.cwd} : {}) };
-      // The native adapter runs this synchronous fence after awaited preparation,
-      // immediately before dispatch. It must never reselect or replay a child.
-      const beforeDispatch = () => { this.assertParent(parent,exec.signal); this.validateSelected(parent,plan); };
-      beforeDispatch();
-      invoked = true; const result = await this.invokeNative(args,exec,beforeDispatch);
-      if (result?.kind !== 'activation' || typeof result.childId !== 'string' || !result.childId.trim() || result.childId.length>500) fail('START_UNKNOWN','Native adapter did not return a verified child Session identity');
-      // Once dispatched, later parent changes cannot alter this frozen child route.
-      acceptedChildId=result.childId;
-      this.ledger.accept(reservation,result.childId);
-      this.#byChild.set(pid+'\0'+result.childId,{reservation,base});
-      record('accepted',{childId:result.childId});
-      const ended=this.#ended.get(pid+'\0'+result.childId);
-      if (ended) { this.#ended.delete(pid+'\0'+result.childId); this.settle(pid,result.childId,ended); }
-      return { ...result, decisionId, candidateId:route.candidateId, selected:{provider:options.provider,model:options.model,effort:options.reasoningEffort ?? null}, routingReason:route.reason };
+      lease.assertCurrent();
+      invoked = true;
+      const result = await this.invokeNative(args,exec,lease.assertCurrent);
+      if (result?.kind !== 'activation') fail('START_UNKNOWN','Native adapter did not return an activation');
+      lease.accepted(result.childId);
+      return { ...result, decisionId:lease.decisionId, candidateId:route.candidateId, selected:{provider:options.provider,model:options.model,effort:options.reasoningEffort ?? null}, routingReason:route.reason };
     } catch (error) {
-      // Native errors can follow publication (e.g. post-execute failure): never blindly retry.
-      if (invoked && error?.definitelyNotStarted !== true) {
-        this.ledger.unknown(reservation); this.recovered.add(decisionId);
-        if(acceptedChildId) this.#byChild.delete(pid+'\0'+acceptedChildId);
-        try{record('unknown',{code:error?.code ?? 'START_FAILED',...(acceptedChildId ? {childId:acceptedChildId} : {})});}catch{}
-      }
-      else { this.ledger.reject(reservation); try{record('rejected',{code:error?.code ?? 'REJECTED'});}catch{} }
-      if(error && typeof error==='object') error.decisionId=decisionId;
+      lease.failStart(error,!invoked || error?.definitelyNotStarted === true);
+      if (error && typeof error === 'object') error.decisionId=lease.decisionId;
       throw error;
-    } finally {
-      if(tracking) { const n=(this.#starting.get(pid) ?? 1)-1;
-        if (n>0) this.#starting.set(pid,n); else { this.#starting.delete(pid); for(const key of this.#ended.keys()) if(key.startsWith(pid+'\0')) this.#ended.delete(key); }
-      }
     }
   }
   authorization(parent) {
@@ -154,7 +200,7 @@ export class SubagentRouter {
     finally { clearTimeout(timer); combined.removeEventListener('abort',onAbort); }
   }
   validateSelected(parent,plan) {
-    this.validateOptions(parent,plan.route);
+    if (!plan.nativeEntry) this.validateOptions(parent,plan.route);
     const routes=this.authorization(parent);
     let selected;
     try { selected=selectRoute(this.config,{facts:plan.facts,proposal:plan.proposal,catalog:plan.catalog,authorizedRoutes:routes}); }

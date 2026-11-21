@@ -80,8 +80,12 @@ export class SubagentRouterService extends Service {
 
   get runtime(){return this.manager?.runtime;}
 
-  assertRoot(agent) {
+  assertLiveParent(agent) {
     if (!agent || this.ctx.agents.get(agent.id) !== agent) fail('HOST_EXECUTION_REQUIRED', 'An exact live parent Agent is required');
+  }
+
+  assertRoot(agent) {
+    this.assertLiveParent(agent);
     if (agent.session.header.origin === 'subagent' || agent.session.header.parentSession !== undefined) fail('ROOT_ONLY', 'Routing tools are root-only');
   }
 
@@ -109,7 +113,10 @@ export class SubagentRouterService extends Service {
     assertHostMethods(pipeline, 'ToolExecutionPipeline', ['prepare', 'dispatch', 'complete']);
     const handle=await this.ctx.sessionProjections.register(authorizationProjection);
     assertHostMethods(handle, 'authorization projection', ['stateOf']);
-    const readAuthorization=createAuthorizationReader(handle);
+    const authorizationOf=createAuthorizationReader(handle);
+    const readAuthorization=parent=>{this.assertLiveParent(parent);return authorizationOf(parent);};
+    const routedTokens=new Set();
+    const invokeNative=createNativeInvoker(this.ctx,pipeline);
     const sessionReaders={getAgent:id=>this.ctx.agents.get(id),getSession:id=>this.ctx.get('sessions')?.get(id)};
     const {readChildRoute,readChildOwner,readCompletion}=createChildReaders({observeSession:(id,options)=>this.ctx.sessionQuery.observeSession(id,options)});
     this.manager=new LiveRouter({
@@ -121,9 +128,25 @@ export class SubagentRouterService extends Service {
         if(route.effort===null && inherited.provider===route.provider && inherited.model===route.model && inherited.effort!==null) fail('NULL_EFFORT_INHERITANCE','The native host would inherit a parent effort for this same-route no-effort candidate; no child was created');
       },
       preflight:(options,signal)=>this.ctx.llm.resolveCallConfig(options,signal),
-      invokeNative:createNativeInvoker(this.ctx,pipeline)
+      invokeNative:async(args,exec,beforeDispatch)=>{
+        if(exec.token===undefined)return invokeNative(args,exec,beforeDispatch);
+        routedTokens.add(exec.token);
+        try { return await invokeNative(args,exec,beforeDispatch); }
+        finally { routedTokens.delete(exec.token); }
+      }
     });
     if(this.policy.enabled)this.manager.ensure();
+    this.nativeRouteResolverAvailable=typeof this.ctx.subagents?.registerModelRouteResolver==='function';
+    if(this.nativeRouteResolverAvailable) {
+      this.ctx.effect(()=>this.ctx.subagents.registerModelRouteResolver(({parent,toolName,backend,exec,request})=>{
+        if((toolName!=='subagent'||backend!=='spawn')&&(toolName!=='subagent_fork'||backend!=='fork'))return undefined;
+        if(exec?.parent!==undefined&&routedTokens.has(exec.parent))return undefined;
+        this.assertLiveParent(parent);
+        if(exec?.agent!==parent||exec.name!==toolName||typeof exec.token!=='symbol')fail('HOST_EXECUTION_REQUIRED','Exact native execution and parent identity are required');
+        assertActive(exec.signal);
+        return this.manager.prepareNative(parent,request,exec,toolName);
+      }),'delegationRouter.nativeRoutes');
+    }
     this.ctx.on('internal/config',(fiber,next)=>{
       const raw=next();
       if(fiber!==this.ctx.fiber)return raw;
@@ -141,7 +164,7 @@ export class SubagentRouterService extends Service {
     this.ctx.on('subagent/start',lifecycle.start);
     this.ctx.on('subagent/end',lifecycle.end);
     this.ctx.effect(()=>()=>lifecycle.clear(), 'delegationRouter.lifecycle');
-    this.ctx.effect(() => mountGuidance(this.ctx,{readConfig:()=>this.configuration(),readAuthorization}), 'delegationRouter.guidance');
+    this.ctx.effect(() => mountGuidance(this.ctx,{readConfig:()=>this.configuration(),readAuthorization,nativeRouting:this.nativeRouteResolverAvailable}), 'delegationRouter.guidance');
     this.ctx.effect(() => () => this.manager.close(), 'delegationRouter.runtime');
     const rootOnly=({agent})=>!!agent&&this.ctx.agents.get(agent.id)===agent&&agent.session.header.origin!=='subagent'&&agent.session.header.parentSession===undefined;
     const rootWhen=context=>rootOnly(context)&&this.manager.status().enabled;
@@ -152,7 +175,7 @@ export class SubagentRouterService extends Service {
       execute:async (args,exec)=>{
         this.assertRoot(exec.agent);
         const state=this.manager.status();
-        const result={...state,...(state.configuredRevision?{policy_revision:state.configuredRevision}:{}),parentRoute:parentRouteSnapshot(exec.agent),nativeSubagentAvailable:!!this.ctx.tools.executable('subagent',exec.agent,exec.toolSet),decisions:await this.manager.decisions(exec.agent,{limit:args.limit}),evidenceLegend:'selected is policy intent; accepted is a creation receipt; observed is a real child request route; settled is lifecycle end, not verification success; unknown must be reconciled, never automatically replayed.'};
+        const result={...state,...(state.configuredRevision?{policy_revision:state.configuredRevision}:{}),parentRoute:parentRouteSnapshot(exec.agent),nativeRouteResolverAvailable:this.nativeRouteResolverAvailable,nativeSubagentAvailable:!!this.ctx.tools.executable('subagent',exec.agent,exec.toolSet),decisions:await this.manager.decisions(exec.agent,{limit:args.limit}),evidenceLegend:'selected is policy intent; accepted is a creation receipt; observed is a real child request route; settled is lifecycle end, not verification success; unknown must be reconciled, never automatically replayed.'};
         if(args.child_id!==undefined) {
           return {...result,childId:args.child_id,observedChildRequestRoute:await readChildRoute(exec.agent,args.child_id,exec.signal)};
         }

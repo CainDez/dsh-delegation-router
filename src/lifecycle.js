@@ -108,6 +108,7 @@ export async function decisionSnapshot(parent,records,{limit=20,readChildRoute,r
     const status=unknown ? 'unknown' : record.status==='intent' ? 'selected' : record.status==='accepted' && observed ? 'observed' : record.status;
     result.push(Object.freeze({decisionId:record.decisionId,policyRevision:record.policyRevision,kind:record.kind,
       status,selected:routeEvidence(record),accepted:accepted.has(record.decisionId),observed,
+      ...(record.entry ? {entry:record.entry,routingReason:record.routingReason} : {}),
       settled:!unknown && record.status==='settled',unknown,
       ...(typeof record.candidateId==='string'?{candidateId:record.candidateId}:{}),
       ...(typeof record.childId==='string'?{childId:record.childId}:{}),

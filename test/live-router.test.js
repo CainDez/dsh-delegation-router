@@ -365,3 +365,64 @@ test('ambiguous recovery writes keep ownership and pause without repeating mutat
   assert.throws(()=>f.router.reconcile('parent','old-child',terminalEvidence()),{code:'RECOVERY_REQUIRED'});assert.equal(attempted,1);assert.equal(journal.load().length,2);assert.equal(f.starts.length,0);
   f.router.close();assert.equal(journal.closes,1);
 });
+
+const nativeExecution = (id, signal) => ({callId:id,signal,arguments:request()});
+
+test('native spawn and team fork use the live preset and share one journal and quota', async () => {
+  const f=fixture();
+  const first=await f.router.prepareNative(f.parent,{},nativeExecution('default'),'subagent');
+  assert.deepEqual([first.provider,first.model,first.effort],['provider-a','model-a','low']);
+  assert.deepEqual(f.owners[0].load(), []); // approvals and guards have not admitted it yet
+  first.beforeStart();
+  f.router.settle(f.parent.id,'native-a',{source:'subagent/end',runId:'early-end'});
+  first.accepted('native-a');
+  const initial=f.owners[0].load();
+  assert.deepEqual(initial.map(row=>[row.status,row.entry,row.routingReason]),[['intent','subagent','default-candidate'],['accepted','subagent','default-candidate'],['settled','subagent','default-candidate']]);
+  await fails(()=>f.router.prepareNative(f.parent,{},nativeExecution('default'),'subagent'),'CALL_ID_REUSE');
+  f.router.validateUpdate(f.candidate({defaultCandidateId:'b'}));
+  f.replace({defaultCandidateId:'b'});
+  const fork=await f.router.prepareNative(f.parent,{},nativeExecution('fork'),'subagent_fork');
+  assert.equal(fork.model,'model-b');
+  fork.beforeStart(); fork.accepted('native-b');
+  const routed=await f.router.run(f.parent,request({candidate_id:'a'}),execution('legacy'));
+  assert.equal(routed.selected.model,'model-a');
+  const observed=await f.router.decisions(f.parent);
+  assert.equal(observed.find(row=>row.childId==='native-b').entry,'subagent_fork');
+  assert.equal(f.owners.length,1); assert.equal(f.starts.length,1); // only the compatibility tool dispatches natively itself
+  f.router.close();
+});
+
+test('disabled, abandoned, stale and cancelled native preparations do not leave a reservation', async () => {
+  const f=fixture({policy:{enabled:false}});
+  assert.equal(await f.router.prepareNative(f.parent,{},nativeExecution('off'),'subagent'),undefined);
+  assert.equal(f.owners.length,0);
+  f.replace({enabled:true});
+  const lease=await f.router.prepareNative(f.parent,{},nativeExecution('stale'),'subagent');
+  assert.throws(()=>lease.accepted('not-created'),{code:'INVALID_ACTIVATION'});
+  f.replace({defaultCandidateId:'b'});
+  assert.throws(()=>lease.beforeStart(),{code:'STALE_CONFIG'});
+  assert.deepEqual(f.owners[0].load(),[]);
+  const signal=new AbortController();
+  const cancelled=await f.router.prepareNative(f.parent,{},nativeExecution('cancel',signal.signal),'subagent');
+  signal.abort();
+  assert.throws(()=>cancelled.beforeStart(),{code:'CANCELLED'});
+  assert.deepEqual(f.owners[0].load(),[]);
+  f.router.close();
+});
+
+test('successful native execution blocks duplicate leases and unknown creation is never replayed', async () => {
+  const f=fixture();
+  const one=await f.router.prepareNative(f.parent,{candidate_id:'b'},nativeExecution('same'),'subagent');
+  const two=await f.router.prepareNative(f.parent,{candidate_id:'b'},nativeExecution('same'),'subagent');
+  one.beforeStart();
+  assert.throws(()=>two.beforeStart(),{code:'CALL_ID_REUSE'});
+  one.unknown(new Error('native host cannot establish receipt'));
+  one.unknown();
+  assert.deepEqual(f.owners[0].load().map(row=>row.status),['intent','unknown']);
+  const next=await f.router.prepareNative(f.parent,{},nativeExecution('new'),'subagent');
+  assert.throws(()=>next.beforeStart(),{code:'RECOVERY_REQUIRED'});
+  f.replace({enabled:false});
+  await fails(()=>f.router.prepareNative(f.parent,{},nativeExecution('same'),'subagent'),'CALL_ID_REUSE');
+  assert.equal(await f.router.prepareNative(f.parent,{},nativeExecution('different'),'subagent'),undefined);
+  f.router.close();
+});

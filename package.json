@@ -1,6 +1,6 @@
 {
   "name": "dsh-delegation-router",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "repository": {
     "type": "git",
@@ -39,6 +39,7 @@
     "cordis.patch.yml",
     "client.js",
     "README.md",
+    "docs/unified-native-routing.md",
     "LICENSE"
   ],
   "scripts": {

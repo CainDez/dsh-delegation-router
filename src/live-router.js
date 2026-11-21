@@ -2,13 +2,14 @@ import {SubagentRouter,normalizeRequest} from './runtime.js';
 import {createHash} from 'node:crypto';
 import {fail} from './errors.js';
 import {decisionSnapshot} from './lifecycle.js';
+import {nativeCandidateId} from './native-selection.js';
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 /** Owns one audit lock and stable call receipts across UI policy revisions. */
 export class LiveRouter {
   constructor({readConfig,createJournal,...dependencies}) {
     this.readConfig=readConfig;this.createJournal=createJournal;this.dependencies=dependencies;
-    this.inFlight=0;this.calls=new Map();this.latest=new Map();this.closed=false;
+    this.inFlight=0;this.calls=new Map();this.nativeStarts=new Set();this.latest=new Map();this.closed=false;
   }
   snapshot(){const config=this.readConfig();return {config,key:digest(config),revision:digest(config.policy)};}
   pending(){return [...this.latest.values()].some(status=>status==='intent'||status==='accepted'||status==='unknown');}
@@ -52,6 +53,28 @@ export class LiveRouter {
       this.latest=latest;this.runtime=runtime;this.key=key;
       return runtime;
     }catch(error){if(fresh){this.journal.close();this.journal=undefined;this.auditFile=undefined;}throw error;}
+  }
+  async prepareNative(parent,request,exec,entry){
+    const validCallId=typeof exec.callId==='string'&&!!exec.callId&&exec.callId.length<=500;
+    const key=validCallId?parent.id+'\0'+exec.callId:undefined;
+    if(key&&this.nativeStarts.has(key))fail('CALL_ID_REUSE','Native call already submitted; inspect audit evidence before creating a new child');
+    if(!this.snapshot().config.policy.enabled)return undefined;
+    if(!key)fail('INVALID_REQUEST','A bounded native host callId is required');
+    const runtime=this.ensure();
+    const candidateId=nativeCandidateId(runtime.config,request);
+    this.inFlight++;
+    try{
+      const lease=await runtime.prepareNative(parent,{
+        prompt:exec.arguments?.prompt,description:exec.arguments?.description,
+        ...(candidateId===undefined?{}:{candidate_id:candidateId})
+      },exec,entry);
+      return Object.freeze({...lease,beforeStart:()=>{
+        if(this.nativeStarts.has(key))fail('CALL_ID_REUSE','Native call already submitted');
+        if(this.nativeStarts.size>=10000)fail('CALL_HISTORY_LIMIT','Review native routing history before reloading');
+        lease.beforeStart();
+        this.nativeStarts.add(key);
+      }});
+    } finally { this.inFlight--; }
   }
   run(parent,args,exec){
     const request=normalizeRequest(args);

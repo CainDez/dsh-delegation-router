@@ -1,0 +1,803 @@
+diff --git a/packages/core/tools/src/contracts.ts b/packages/core/tools/src/contracts.ts
+index 51597b41077a5d1258e1ed16b46c279b5c77904d..0c77e50c9ca5c70a38ba4ae779bb10d78f29cc61 100644
+--- a/packages/core/tools/src/contracts.ts
++++ b/packages/core/tools/src/contracts.ts
+@@ -27,6 +27,15 @@ export interface ToolOutputDefinition {
+ export interface ToolDefinition extends ToolSchema {
+   /** Mandatory canonical output declaration. */
+   readonly output: ToolOutputDefinition
++  /**
++   * Prepare effective arguments for an admitted call before policy runs. Do not
++   * start tool work here. The executor snapshots and locks any replacement and
++   * dispatches it only to this same definition.
++   * @param exec - execution with the original frozen arguments and caller signal.
++   * @param assertCurrent - throws if the original definition is no longer executable; may be retained until dispatch.
++   * @returns lossless JSON replacement, or undefined to preserve the original arguments.
++   */
++  prepareArguments?(exec: ToolRunContext, assertCurrent: () => void): unknown
+   /**
+    * Run one accepted call and return only its canonical lossless-JSON value.
+    * Async work must observe or forward `exec.signal` and settle only after its
+@@ -212,7 +221,8 @@ export type ToolExecutionMode =
+ 
+ /**
+  * One pending tool call inside the executor pipeline. Parsed arguments cross
+- * one lossless-JSON materialization boundary before policy and are deep-frozen;
++ * lossless-JSON materialization before policy and are deep-frozen. A tool may
++ * supply effective arguments; policy and the body see the same replacement.
+  * call identity, the caller signal, and the executor-assigned {@link token} are
+  * readonly. The executor freezes the complete object before `tools/result`
+  * observers run.
+diff --git a/packages/core/tools/src/pipeline.ts b/packages/core/tools/src/pipeline.ts
+index 1a13c087481cdf9fe9a7a1a2c10796eebcc3eb96..3c7da73e0bcf9496face19243ff485c19a935539 100644
+--- a/packages/core/tools/src/pipeline.ts
++++ b/packages/core/tools/src/pipeline.ts
+@@ -81,6 +81,9 @@ export class ToolExecutionPipeline {
+     return tool !== undefined && this.source.reject?.(name, nested) === undefined ? tool : undefined
+   }
+ 
++  /** The admitted definition owns every prepared argument replacement. */
++  private preparedDefinitions = new WeakMap<ToolRunContext, ToolDefinition>()
++
+   /** Context deferred by a running tool body, keyed by its scheduler-owned execution. */
+   private deferredContexts = new WeakMap<ToolRunContext, UserMessage[]>()
+ 
+@@ -114,7 +117,7 @@ export class ToolExecutionPipeline {
+     }
+   }
+ 
+-  private createExecution(exec: ToolExecutionInput): ScheduledToolPreparation | { kind: 'ready'; exec: MutableToolRunContext } {
++  private createExecution(exec: ToolExecutionInput): ScheduledToolPreparation | { kind: 'ready'; exec: MutableToolRunContext; visible: ToolDefinition | undefined } {
+     const deferredContexts: UserMessage[] = []
+     const token = createExecutionToken()
+     const callId = exec.callId
+@@ -174,7 +177,7 @@ export class ToolExecutionPipeline {
+           result: toolErrorResult(rejection),
+         }
+       }
+-      return { kind: 'ready', exec: execution }
++      return { kind: 'ready', exec: execution, visible }
+     } catch (error: unknown) {
+       const execution: MutableToolRunContext = { ...base, arguments: undefined }
+       this.contentFinalizers.set(execution, finalizerFor())
+@@ -196,6 +199,26 @@ export class ToolExecutionPipeline {
+       return { kind: 'final-result', exec, result: toolAbortedBeforeDispatchResult() }
+     }
+     try {
++      const { visible } = created
++      if (visible?.prepareArguments !== undefined) {
++        const assertCurrent = (): void => {
++          if (this.resolveExecution(input.name, input.agent, input.parent !== undefined, input.toolSet) !== visible) {
++            throw new ToolNotFoundError(input.name)
++          }
++        }
++        assertCurrent()
++        const replacement = await visible.prepareArguments(exec, assertCurrent)
++        if (this.callerCancelled(exec)) {
++          return { kind: 'final-result', exec, result: toolAbortedBeforeDispatchResult() }
++        }
++        if (replacement !== undefined) {
++          assertCurrent()
++          const detached = snapshotJsonValue(replacement)
++          if (detached === undefined) throw new TypeError('prepared tool arguments must be losslessly JSON-serializable')
++          Object.defineProperty(exec, 'arguments', { value: deepFreeze(detached), writable: false, configurable: false })
++          this.preparedDefinitions.set(exec, visible)
++        }
++      }
+       const carrier = scopeTarget(this.tools, exec.agent)
+       const gate = await this.ctx.waterfall(
+         carrier, 'tools/pre-execute', exec,
+@@ -229,7 +252,10 @@ export class ToolExecutionPipeline {
+       }
+       return { kind: 'dispatch', exec }
+     } catch (error: unknown) {
+-      return { kind: 'final-result', exec, result: toolErrorResult(error) }
++      const result = this.callerCancelled(exec) && isUnclassifiedCancellation(error, exec.signal)
++        ? toolAbortedBeforeDispatchResult()
++        : toolErrorResult(error)
++      return { kind: 'final-result', exec, result }
+     }
+   }
+ 
+@@ -275,7 +301,8 @@ export class ToolExecutionPipeline {
+     exec.signal = signal
+     try {
+       const tool = this.resolveExecution(exec.name, exec.agent, exec.parent !== undefined, exec.toolSet)
+-      if (!tool) throw new ToolNotFoundError(exec.name)
++      const prepared = this.preparedDefinitions.get(exec)
++      if (!tool || (prepared !== undefined && prepared !== tool)) throw new ToolNotFoundError(exec.name)
+       state.bodyInvoked = true
+       const returned = await tool.execute(exec.arguments, exec)
+       const result = this.createSuccessResult(exec, tool, returned)
+diff --git a/packages/core/tools/src/schema.ts b/packages/core/tools/src/schema.ts
+index eb6b6f30f9115d3e5c3f19cd1b6b869b0e2cffb2..e6b956c6c97d24c8cb507bbb2c0fa683b434a115 100644
+--- a/packages/core/tools/src/schema.ts
++++ b/packages/core/tools/src/schema.ts
+@@ -507,6 +507,15 @@ export interface DefineToolOptions<S extends ParameterSchemaSpec, O extends Valu
+    * @returns Whether the call may join a parallel group.
+    */
+   isConcurrencySafe?(args: InferArgs<S>): boolean
++  /**
++   * Prepare a typed argument replacement before tool policy. Invalid inputs
++   * skip preparation and retain normal execution-time validation.
++   * @param args - validated original arguments.
++   * @param exec - execution with the original frozen arguments and caller signal.
++   * @param assertCurrent - throws if the definition is no longer executable.
++   * @returns replacement arguments, or undefined to preserve the original call.
++   */
++  prepareArguments?(args: InferArgs<S>, exec: ToolRunContext, assertCurrent: () => void): unknown
+   /**
+    * Execute the tool after argument validation.
+    * @param args - typed validated arguments.
+@@ -559,6 +568,8 @@ export function defineTool<const S extends ParameterSchemaSpec, const O extends
+   // oxlint-disable-next-line typescript/unbound-method
+   const userExecute = options.execute
+   // oxlint-disable-next-line typescript/unbound-method
++  const userPrepareArguments = options.prepareArguments
++  // oxlint-disable-next-line typescript/unbound-method
+   const userFinalizeContent = options.finalizeContent
+   // oxlint-disable-next-line typescript/unbound-method
+   const userProjectContent = options.projectContent
+@@ -601,6 +612,12 @@ export function defineTool<const S extends ParameterSchemaSpec, const O extends
+       return userExecute(args as InferArgs<S>, exec) as Promise<JsonValue>
+     },
+   }
++  if (userPrepareArguments !== undefined) {
++    tool.prepareArguments = (exec, assertCurrent) => {
++      if (validate(exec.arguments).length > 0) return undefined
++      return userPrepareArguments(exec.arguments as InferArgs<S>, exec, assertCurrent)
++    }
++  }
+   if (userProjectContent) {
+     tool.projectContent = (exec, result) => userProjectContent(exec, result)
+   }
+diff --git a/packages/core/tools/tests/tools.spec.ts b/packages/core/tools/tests/tools.spec.ts
+index 8f4455c6214225c90322ae8fb80db860b57cdebf..691c2441b28de792819b31fc79316cc2eec38f33 100644
+--- a/packages/core/tools/tests/tools.spec.ts
++++ b/packages/core/tools/tests/tools.spec.ts
+@@ -922,6 +922,49 @@ describe('ToolRuntime', () => {
+       expect(seen[0]?.signal).toBe(controller.signal)
+     })
+ 
++    it('asks and guards against the prepared arguments before the body', async () => {
++      const ctx = await approvalSetup()
++      const agent = fakeAgent()
++      const observed: string[] = []
++      try {
++        ctx.tools.register(defineTool({
++          name: 'prepared', description: 'Argument policy fixture',
++          parameters: { model: { type: 'string', required: true } },
++          output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
++          async prepareArguments(args) {
++            expect(args.model).toBe('original')
++            return { model: 'effective' }
++          },
++          async execute(args) {
++            observed.push('body')
++            return args.model
++          },
++        }))
++        ctx.on('tools/pre-execute', async (exec, _next): Promise<PreToolDecision> => {
++          expect(exec.arguments).toEqual({ model: 'effective' })
++          return { kind: 'ask', reason: JSON.stringify(exec.arguments) }
++        })
++        ctx.on('approval/request', (req) => {
++          observed.push('approval')
++          expect(req.reason).toBe('{"model":"effective"}')
++          return Promise.resolve<ApprovalOutcome>('allowed-once')
++        })
++        ctx.tools.guard(exec => {
++          observed.push('guard')
++          expect(exec.arguments).toEqual({ model: 'effective' })
++          return undefined
++        })
++        const result = await executeToolFixture(ctx, {
++          callId: ToolCallId('prepared-approval'), name: 'prepared', arguments: { model: 'original' },
++          agent, signal: testToolSignal,
++        })
++        expect(result).toMatchObject({ isError: false, value: 'effective' })
++        expect(observed).toEqual(['approval', 'guard', 'body'])
++      } finally {
++        await ctx.fiber.dispose()
++      }
++    })
++
+     it('denies with the user-rejection reason on rejected', async () => {
+       const ctx = await approvalSetup()
+       ctx.on('approval/request', () => Promise.resolve<ApprovalOutcome>('rejected'))
+diff --git a/packages/subagent/subagent-fork-in-process/src/index.ts b/packages/subagent/subagent-fork-in-process/src/index.ts
+index 38181395527282793911f99bff4f7d02d3e69c25..2a9d7e66c89fdd900dc490ce00a81c798212bbe2 100644
+--- a/packages/subagent/subagent-fork-in-process/src/index.ts
++++ b/packages/subagent/subagent-fork-in-process/src/index.ts
+@@ -66,6 +66,7 @@ class ForkInProcessProvider implements SubagentProvider {
+   }
+   // Context contract: a forked child IS seeded with the parent's completed-turn prefix.
+   readonly inheritsParentContext = true
++  readonly nativeModelRouting = true
+ 
+   constructor(readonly name: string) {}
+ 
+diff --git a/packages/subagent/subagent-spawn-in-process/src/index.ts b/packages/subagent/subagent-spawn-in-process/src/index.ts
+index 41f429ee7bc6ea6741ad9a6f4f317df57b84f874..b790677d986f351bc19760f451a4f7de581a05b5 100644
+--- a/packages/subagent/subagent-spawn-in-process/src/index.ts
++++ b/packages/subagent/subagent-spawn-in-process/src/index.ts
+@@ -44,6 +44,7 @@ class SpawnInProcessProvider implements SubagentProvider {
+   }
+   // Context contract: a spawned child starts fresh — it never sees the parent conversation.
+   readonly inheritsParentContext = false
++  readonly nativeModelRouting = true
+ 
+   constructor(readonly name: string) {}
+ 
+diff --git a/packages/subagent/subagent/src/index.ts b/packages/subagent/subagent/src/index.ts
+index bb89264e918a64cdca6719500010e9dad28fc014..26b4b66356b1ec770fbda23d94576bcd78cdde19 100644
+--- a/packages/subagent/subagent/src/index.ts
++++ b/packages/subagent/subagent/src/index.ts
+@@ -57,6 +57,9 @@ import type {
+   SubagentActivationSpec,
+   SubagentInterruptAuthority,
+   SubagentMemberNames,
++  SubagentModelRoute,
++  SubagentModelRouteContext,
++  SubagentModelRouteResolver,
+   SubagentProvider,
+   SubagentRunEndInfo,
+   SubagentRunInfo,
+@@ -88,6 +91,10 @@ export type {
+   SubagentActivationSpec,
+   SubagentInterruptAuthority,
+   SubagentMemberNames,
++  SubagentModelRoute,
++  SubagentModelRouteContext,
++  SubagentModelRouteRequest,
++  SubagentModelRouteResolver,
+   SubagentProvider,
+   SubagentResult,
+   SubagentRun,
+@@ -198,6 +205,7 @@ export class SubagentRuntime extends TypertRemoteService {
+   })
+   static inject = ['workingDirectory', 'sessionProjections']
+   private providers = new Map<string, SubagentProvider>()
++  private modelRouteResolver: { resolver: SubagentModelRouteResolver } | undefined
+   private manager: SubagentManager | undefined
+   /**
+    * The contained lifecycle-edge publisher. Built here because scoped dispatch
+@@ -231,6 +239,53 @@ export class SubagentRuntime extends TypertRemoteService {
+     })
+   }
+ 
++  /**
++   * Install the single trusted resolver for native local delegation. A duplicate
++   * registration fails; disposal prevents new selection and invalidates pending routes.
++   * @param resolver - selects a route for the admitted execution; undefined leaves native selection intact.
++   * @returns the exact synchronous registration disposer.
++   */
++  registerModelRouteResolver(resolver: SubagentModelRouteResolver): () => void {
++    const registration = { resolver }
++    // oxlint-disable-next-line typescript/no-misused-promises -- synchronous disposer
++    return this.ctx.effect(() => {
++      if (this.modelRouteResolver !== undefined) {
++        throw new SubagentError('a subagent model route resolver is already registered', 'DUPLICATE_MODEL_ROUTE_RESOLVER')
++      }
++      this.modelRouteResolver = registration
++      return () => { this.modelRouteResolver = undefined }
++    }, 'subagents.registerModelRouteResolver()')
++  }
++
++  /**
++   * Resolve one admitted native tool call without starting a child.
++   * @param context - exact parent, native tool, backend, and original request.
++   * @returns the captured route with registration-current validation, or undefined for native selection.
++   */
++  async resolveModelRoute(context: SubagentModelRouteContext): Promise<SubagentModelRoute | undefined> {
++    const registration = this.modelRouteResolver
++    if (registration === undefined) return undefined
++    const route = await registration.resolver(context)
++    if (route === undefined) return undefined
++    const { provider, model, effort } = route
++    const assertCurrent = route.assertCurrent?.bind(route)
++    const beforeStart = route.beforeStart?.bind(route)
++    const accepted = route.accepted?.bind(route)
++    const unknown = route.unknown?.bind(route)
++    return {
++      provider, model, effort,
++      assertCurrent: () => {
++        if (this.modelRouteResolver !== registration) {
++          throw new SubagentError('the selected subagent model route resolver was withdrawn', 'MODEL_ROUTE_CHANGED')
++        }
++        assertCurrent?.()
++      },
++      ...beforeStart === undefined ? {} : { beforeStart },
++      ...accepted === undefined ? {} : { accepted },
++      ...unknown === undefined ? {} : { unknown },
++    }
++  }
++
+   /**
+    * Resolve a delegation tool's depth policy against the current user setting.
+    * @param configured - Explicit tool limit, or provider-managed for external delegation.
+diff --git a/packages/subagent/subagent/src/manager.ts b/packages/subagent/subagent/src/manager.ts
+index 59639cef703a70930aef7b900569aea1389343a5..15b39a2b3433f6b85c7e5cba26484ddac02a11cd 100644
+--- a/packages/subagent/subagent/src/manager.ts
++++ b/packages/subagent/subagent/src/manager.ts
+@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto'
+ import { isAbsolute, resolve } from 'node:path'
+ import type {} from '@deepseek-ai/dsh-working-directory'
+ import { FiberState, type Context } from '@deepseek-ai/cordis'
+-import type { Agent, AgentOptions, CreateAgentOptions } from '@deepseek-ai/dsh-agent'
++import type { Agent, AgentOptions, CreateAgentOptions, ModelSelection } from '@deepseek-ai/dsh-agent'
+ import { brandString } from '@deepseek-ai/dsh-brand'
+ import { ReasoningEffortId, contentHasImage, createUserMessage, errorChain } from '@deepseek-ai/dsh-llm'
+ import type { ContentBlock, MessageId, MessageSource } from '@deepseek-ai/dsh-llm'
+@@ -96,6 +96,7 @@ type MaterializeInputs = MaterializeBase & (
+       /** Absolute initial directory captured before provider preparation. */
+       cwd: string
+       seed: readonly SessionEvent[] | undefined
++      seededModelSelection: Readonly<ModelSelection> | undefined
+       meta: NonNullable<CreateAgentOptions['meta']>
+       /** Exact parent-log prefix length inside {@link seed}. */
+       inheritedEventCount: SessionLogOffset
+@@ -389,6 +390,7 @@ export class SubagentManager {
+             parent,
+             cwd,
+             seed,
++            seededModelSelection: seed === undefined ? undefined : spec.seededModelSelection,
+             meta: childSessionMeta(parent, childDepth, prepared.seed !== undefined, spec.agentPreset),
+             inheritedEventCount,
+             delegatedPolicies,
+@@ -840,6 +842,7 @@ export class SubagentManager {
+           await workingDirectory.set(child, create.cwd, inputs.signal)
+         }
+         if (inputs.composition.agentPreset === undefined) await applyChildComposition(childCtx, create?.parent, inputs.composition)
++        if (create?.seededModelSelection !== undefined) child.model.select(create.seededModelSelection)
+         if (inputs.outputSchema !== undefined) {
+           structured = attachStructuredRuntime(childCtx, inputs.outputSchema, () =>
+             child.inbox.nextStep.length === 0
+diff --git a/packages/subagent/subagent/src/types.ts b/packages/subagent/subagent/src/types.ts
+index 1786ed8e2ebb3b0195b972628468b8867ea614f1..462fc8f4412bf4b24db72e81749958248254ac12 100644
+--- a/packages/subagent/subagent/src/types.ts
++++ b/packages/subagent/subagent/src/types.ts
+@@ -7,11 +7,11 @@
+  * @module @deepseek-ai/dsh-subagent/types
+  */
+ 
+-import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
++import type { Agent, AgentOptions, ModelSelection } from '@deepseek-ai/dsh-agent'
+ import type { Branded } from '@deepseek-ai/dsh-brand'
+ import type { ContentBlock, MessageId } from '@deepseek-ai/dsh-llm'
+ import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+-import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
++import type { ObjectJsonSchema, ToolRunContext } from '@deepseek-ai/dsh-tools'
+ 
+ /** Identifies one subagent residency epoch across its lifecycle event pair. */
+ export type SubagentRunId = Branded<'SubagentRunId'>
+@@ -25,6 +25,47 @@ export function SubagentRunId(id: string): SubagentRunId {
+   return id as SubagentRunId
+ }
+ 
++/** One native delegation's original model selection fields. The candidate id is opaque to the Host. */
++export interface SubagentModelRouteRequest {
++  readonly candidate_id?: string
++  readonly provider?: string
++  readonly model?: string
++  readonly reasoning_effort?: string
++}
++
++/** Context of one admitted, model-selectable native spawn or fork. */
++export interface SubagentModelRouteContext {
++  readonly parent: Agent
++  readonly toolName: string
++  readonly backend: string
++  readonly exec: ToolRunContext
++  readonly request: SubagentModelRouteRequest
++}
++
++/** Selected route and synchronous callbacks for one activation attempt. */
++export interface SubagentModelRoute {
++  readonly provider: string
++  readonly model: string
++  /** Null uses the selected model's default; it does not inherit the parent's effort. */
++  readonly effort: string | null
++  /** Throw to reject a stale selection before submission. */
++  readonly assertCurrent?: () => void
++  /** Runs after final validation, immediately before submission. Throwing prevents submission. */
++  readonly beforeStart?: () => void
++  /** Observe the local activation after its initial message and child identity are accepted. */
++  readonly accepted?: (childId: string) => void
++  /** Observe a failed submission whose child identity was not verified. The call is not replayed. */
++  readonly unknown?: () => void
++}
++
++/**
++ * Select the route before tool approval and guards. Do not start a child or reserve a submission here.
++ * @param context - caller and original argument selection, with a cooperative cancellation signal.
++ * @returns The selected route or undefined to keep native selection and validation.
++ */
++export type SubagentModelRouteResolver = (context: SubagentModelRouteContext) =>
++SubagentModelRoute | undefined | Promise<SubagentModelRoute | undefined>
++
+ /** One managed child execution and its result delivery policy. */
+ export interface SubagentActivationSpec extends Omit<SubagentStartRequest, 'label' | 'signal'> {
+   /** Registered backend to use. */
+@@ -43,6 +84,8 @@ export interface SubagentActivationSpec extends Omit<SubagentStartRequest, 'labe
+   readonly signal: AbortSignal
+   /** Parent delivery notifies the model; caller delivery only returns the result. Local children always enter the parent catalog. */
+   readonly delivery: 'parent' | 'caller'
++  /** Authorized selection to record after a forked child's inherited prefix. */
++  readonly seededModelSelection?: Readonly<ModelSelection>
+ }
+ 
+ /** A managed execution; disposal addresses this exact activation, never a later resume. */
+@@ -329,6 +372,8 @@ export interface SubagentProvider {
+    * It says nothing about tool registration, injected services, or authority inheritance.
+    */
+   readonly inheritsParentContext: boolean
++  /** This local spawn/fork implementation accepts the native model-route resolver. */
++  readonly nativeModelRouting?: true
+   /**
+    * Optional static provider-owned provider/model route for child Agent
+    * options. Consumers merge tool/model overrides over these values before
+diff --git a/packages/subagent/tool-subagent/src/index.ts b/packages/subagent/tool-subagent/src/index.ts
+index 5f2f0893635e76fc7633b4c49adffcdf84d96f77..3589856cbf5cf1ac1b9e08dda9b9961974af75b5 100644
+--- a/packages/subagent/tool-subagent/src/index.ts
++++ b/packages/subagent/tool-subagent/src/index.ts
+@@ -9,18 +9,20 @@
+ import type { Context } from '@deepseek-ai/cordis'
+ import z from '@deepseek-ai/schemastery'
+ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
+-import { defineTool } from '@deepseek-ai/dsh-tools'
+-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
++import { defineTool, ToolArgsError } from '@deepseek-ai/dsh-tools'
++import type { ToolDefinition, ToolExecutionToken } from '@deepseek-ai/dsh-tools'
+ import type { AgentOptions } from '@deepseek-ai/dsh-agent'
+ import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+ import {
+   assertSubagentMaxDepth,
++  SubagentError,
+   delegationDepthOf,
+   parentAgentOptionsForDelegation,
+ } from '@deepseek-ai/dsh-subagent'
+-import type { SubagentProvider } from '@deepseek-ai/dsh-subagent'
++import type { SubagentActivation, SubagentActivationSpec, SubagentModelRoute, SubagentProvider } from '@deepseek-ai/dsh-subagent'
+ import {
++  assertAllowedModelSelection,
+   hasConfiguredLlmSelection,
+   hasDelegationModelRequest,
+   preflightChildLlmRoute,
+@@ -101,6 +103,15 @@ export const Config: z<Config> = z.object({
+   maxDepth: z.union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed' as const)]),
+ })
+ 
++/** Outcome observers cannot turn a submitted activation into a retryable call failure. */
++function notifyRouteOutcome(ctx: Context, phase: 'accepted' | 'unknown', notify: () => void): void {
++  try {
++    notify()
++  } catch (error: unknown) {
++    ctx.logger.warn('subagent model-route %s observer failed: %s', phase, error instanceof Error ? error.message : String(error))
++  }
++}
++
+ /**
+  * Model-facing wording from the provider's conversation-history descriptor
+  * ({@link SubagentProvider.inheritsParentContext}).
+@@ -201,6 +212,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
+     assertSubagentProviderConfiguration(subagentProvider)
+     const wording = providerWording(subagentProvider.inheritsParentContext)
+     const providerRouteDefaults = subagentProvider.agentRouteDefaults
++    const canRoute = subagentProvider.nativeModelRouting === true
++      && subagentProvider.prepareContinuable !== undefined
++      && (modelSelectionEnabled || subagentProvider.inheritsParentContext)
++    const routed = new WeakMap<ToolExecutionToken, { route: SubagentModelRoute; assertToolCurrent: () => void; claimed: boolean }>()
+     const selectionDescription = providerRouteDefaults !== undefined
+       ? ' Omit `provider`, `model`, and `reasoning_effort` to use child defaults, falling back to this backend\'s route defaults.'
+       : ' Omit `provider`, `model`, and `reasoning_effort` to use child defaults, falling back to compatible parent values.'
+@@ -243,6 +258,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
+             description: presets.description,
+           },
+         },
++        ...canRoute ? {
++          candidate_id: {
++            type: 'string' as const,
++            description: 'Delegation candidate id. Requires an active routing policy that supplies the candidate.',
++          },
++        } : {},
+         ...modelSelectionEnabled ? {
+           provider: {
+             type: 'string' as const,
+@@ -271,6 +292,42 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
+         presentationMeta: (_args, value) => ({ kind: value.kind, name: value.name }),
+       },
+       isConcurrencySafe: () => true,
++      async prepareArguments(args, exec, assertToolCurrent) {
++        if (!canRoute) return undefined
++        const parent = exec.agent
++        if (parent === undefined) return undefined
++        if (ctx.get('agents')?.get(parent.id) !== parent) {
++          throw new SubagentError('subagent creation requires the exact live parent agent', 'UNAUTHORIZED')
++        }
++        presets.resolve(args as PresetSelectionRequest)
++        const { candidate_id, provider, model, reasoning_effort, ...other } = args
++        for (const [field, value] of Object.entries({ candidate_id, provider, model, reasoning_effort })) {
++          if (value !== undefined && (typeof value !== 'string' || value.length === 0)) {
++            throw new ToolArgsError([
++              field + ' must be a non-empty string',
++            ])
++          }
++        }
++        const route = await ctx.subagents.resolveModelRoute({
++          parent, toolName, backend: subagentProvider.name, exec,
++          request: Object.freeze({
++            ...candidate_id === undefined ? {} : { candidate_id },
++            ...provider === undefined ? {} : { provider },
++            ...model === undefined ? {} : { model },
++            ...reasoning_effort === undefined ? {} : { reasoning_effort },
++          }),
++        })
++        if (route === undefined) return undefined
++        exec.signal.throwIfAborted()
++        routed.set(exec.token, { route, assertToolCurrent, claimed: false })
++        return {
++          ...other,
++          ...candidate_id === undefined ? {} : { candidate_id },
++          provider: route.provider,
++          model: route.model,
++          ...route.effort === null ? {} : { reasoning_effort: route.effort },
++        }
++      },
+       async execute(args, exec) {
+         const parent = exec.agent
+         if (!parent) {
+@@ -278,8 +335,21 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
+           throw new Error('subagent tool requires a calling agent (exec.agent was undefined)')
+         }
+ 
+-        const routes = subagentModelSelectionPolicy(subagentModelSelectionProjectionHandle, parent.session)
+-        const modelSelectionPolicy = routes === undefined ? undefined : { routes }
++        const binding = routed.get(exec.token)
++        if (binding === undefined && args.candidate_id !== undefined) {
++          throw new SubagentError('candidate_id requires an active routing policy that selects that candidate; omit it for native selection', 'MODEL_ROUTE_CANDIDATE_UNAVAILABLE')
++        }
++        if (binding !== undefined) {
++          if (binding.claimed) {
++            throw new SubagentError('this routed subagent call has already been dispatched; it will not be repeated', 'MODEL_ROUTE_ALREADY_DISPATCHED')
++          }
++          binding.claimed = true
++        }
++        const readModelSelectionPolicy = () => {
++          const routes = subagentModelSelectionPolicy(subagentModelSelectionProjectionHandle, parent.session)
++          return routes === undefined ? undefined : { routes }
++        }
++        const modelSelectionPolicy = readModelSelectionPolicy()
+         const agentPreset = presets.resolve(args as PresetSelectionRequest)
+         const modelRequest = args as DelegationModelRequest
+         const parentOptions = parentAgentOptionsForDelegation(parent)
+@@ -291,7 +361,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
+         const requestedChildAgentOptions = requestedAgentOptions(
+           configuredChildAgentOptions,
+           modelRequest,
+-          modelSelectionEnabled,
++          modelSelectionEnabled || binding !== undefined,
+           modelSelectionPolicy,
+           parentOptions,
+         )
+@@ -323,14 +393,50 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
+           ...maxDepth !== undefined ? { maxDepth } : {},
+         }
+ 
+-        const started = await ctx.subagents.startActivation({
++        const activation: SubagentActivationSpec = {
+           provider: config.provider,
+           label: args.description,
+           ...args.name === undefined ? {} : { name: args.name },
+           ...request,
+           signal: exec.signal,
+           delivery: 'parent',
+-        })
++        }
++        const runtime = ctx.subagents
++        if (binding === undefined) {
++          const started = await runtime.startActivation(activation)
++          return { kind: 'activation' as const, name: started.name }
++        }
++
++        const { route, assertToolCurrent } = binding
++        route.assertCurrent?.()
++        assertToolCurrent()
++        if (runtime.getProvider(config.provider) !== subagentProvider) {
++          throw new SubagentError('subagent backend changed before submitting the selected route', 'PROVIDER_CHANGED')
++        }
++        if (ctx.get('agents')?.get(parent.id) !== parent) {
++          throw new SubagentError('subagent creation requires the exact live parent agent', 'UNAUTHORIZED')
++        }
++        assertAllowedModelSelection(readModelSelectionPolicy(), parentAgentOptionsForDelegation(parent), route)
++        exec.signal.throwIfAborted()
++        route.beforeStart?.()
++        let started: SubagentActivation
++        try {
++          started = await runtime.startActivation({
++            ...activation,
++            seededModelSelection: {
++              provider: route.provider,
++              model: route.model,
++              ...route.effort === null ? {} : { reasoningEffort: ReasoningEffortId(route.effort) },
++            },
++          })
++          if (started.messageId === undefined) {
++            throw new SubagentError('local subagent submission did not return a verified child; check the team before retrying', 'MODEL_ROUTE_START_UNVERIFIED')
++          }
++        } catch (error: unknown) {
++          notifyRouteOutcome(ctx, 'unknown', () => { route.unknown?.() })
++          throw error
++        }
++        notifyRouteOutcome(ctx, 'accepted', () => { route.accepted?.(started.childId) })
+         return { kind: 'activation' as const, name: started.name }
+       },
+     })
+diff --git a/packages/subagent/tool-subagent/tests/tool-subagent.spec.ts b/packages/subagent/tool-subagent/tests/tool-subagent.spec.ts
+index 095d1de42c9fd3505239edd581276e1bbfef080d..0a4fef55d8f5d7bc02d6a95bf50354f694afb64f 100644
+--- a/packages/subagent/tool-subagent/tests/tool-subagent.spec.ts
++++ b/packages/subagent/tool-subagent/tests/tool-subagent.spec.ts
+@@ -718,6 +718,162 @@ describe('dsh-tool-subagent local activation', () => {
+     expect(parent.options.reasoningEffort).toBe('high')
+   })
+ 
++  it('binds a candidate before policy and delivers the verified child with the selected effort', async () => {
++    const { ctx, parent } = await continuableSetup(true)
++    parent.options.reasoningEffort = ReasoningEffortId('high')
++    const phases: string[] = []
++    const start = vi.spyOn(ctx.subagents, 'startActivation')
++    const accepted = vi.fn((childId: string) => {
++      phases.push('accepted')
++      const catalog = ctx.sessionProjections.snapshot(parent.session).values.subagentCatalog
++      expect(catalog?.find(entry => entry.name === 'named-review')?.id).toBe(childId)
++    })
++    const unknown = vi.fn()
++    ctx.subagents.registerModelRouteResolver(async input => {
++      phases.push('resolve')
++      expect(input.parent).toBe(parent)
++      expect(input).toMatchObject({ backend: 'spawn', toolName: 'subagent', request: {
++        candidate_id: 'review', provider: 'old', model: 'old', reasoning_effort: 'high',
++      } })
++      expect(input.exec.arguments).toMatchObject({ prompt: 'review the patch' })
++      return {
++        provider: 'mock', model: 'mock', effort: null,
++        assertCurrent: () => { phases.push('current') },
++        beforeStart: () => { phases.push('before'); expect(start).not.toHaveBeenCalled() },
++        accepted, unknown,
++      }
++    })
++    ctx.on('tools/pre-execute', (exec, next) => {
++      phases.push('policy')
++      expect(exec.arguments).toMatchObject({ candidate_id: 'review', provider: 'mock', model: 'mock' })
++      expect(exec.arguments).not.toHaveProperty('reasoning_effort')
++      expect(Object.isFrozen(exec.arguments)).toBe(true)
++      return next()
++    })
++    ctx.tools.guard(exec => {
++      phases.push('guard')
++      expect(exec.arguments).toMatchObject({ provider: 'mock', model: 'mock' })
++      return undefined
++    })
++    let child: Agent | undefined
++    ctx.on('subagent/start', (info) => { child = ctx.agents.get(info.id) })
++
++    const result = await callSubagent(ctx, {
++      candidate_id: 'review', provider: 'old', model: 'old', reasoning_effort: 'high',
++      description: 'review patch', prompt: 'review the patch', name: 'named-review',
++    }, { agent: parent })
++
++    expect(result.isError, text(result)).toBe(false)
++    expect(text(result)).toBe('started subagent named-review')
++    expect(phases).toEqual(['resolve', 'policy', 'guard', 'current', 'before', 'accepted'])
++    expect(start).toHaveBeenCalledTimes(1)
++    expect(accepted).toHaveBeenCalledExactlyOnceWith(child!.id)
++    expect(unknown).not.toHaveBeenCalled()
++    await child!.whenIdle()
++    expect(child!.session.requestHeader()?.config.reasoningEffort).toBe('low')
++  })
++
++  it('does not resolve hidden tools or start a transformed route denied by the guard', async () => {
++    const { ctx, parent } = await continuableSetup(true)
++    const beforeStart = vi.fn()
++    const resolver = vi.fn(() => ({ provider: 'mock', model: 'mock', effort: 'high', beforeStart }))
++    ctx.subagents.registerModelRouteResolver(resolver)
++    const args = { description: 'review patch', prompt: 'review', provider: 'old', model: 'old' }
++    const restore = parent.ctx.tools.restrict({ deny: ['subagent'] })
++    expect((await callSubagent(ctx, args, { agent: parent })).isError).toBe(true)
++    expect(resolver).not.toHaveBeenCalled()
++    restore()
++    ctx.tools.guard(exec => typeof exec.arguments === 'object' && exec.arguments !== null
++      && 'reasoning_effort' in exec.arguments && exec.arguments.reasoning_effort === 'high'
++      ? 'route blocked by the guard' : undefined)
++    const rejected = await callSubagent(ctx, args, { agent: parent })
++    expect(text(rejected)).toContain('route blocked by the guard')
++    expect(resolver).toHaveBeenCalledTimes(1)
++    expect(beforeStart).not.toHaveBeenCalled()
++    expect(ctx.sessionProjections.snapshot(parent.session).values.subagentCatalog).toEqual([])
++  })
++
++  it('rejects a transformed route disallowed by native Session authorization', async () => {
++    const { ctx, parent } = await continuableSetup(true)
++    const beforeStart = vi.fn()
++    ctx.subagents.registerModelRouteResolver(() => ({ provider: 'mock', model: 'other', effort: null, beforeStart }))
++    const result = await callSubagent(ctx, { description: 'review', prompt: 'review', provider: 'mock', model: 'mock' }, { agent: parent })
++    expect(result.isError).toBe(true)
++    expect(text(result)).toContain('route "mock/other" is not allowed for this Session')
++    expect(beforeStart).not.toHaveBeenCalled()
++  })
++
++  it('does not dispatch prepared arguments to a new scoped definition', async () => {
++    const { ctx, parent } = await continuableSetup(true)
++    const beforeStart = vi.fn()
++    ctx.subagents.registerModelRouteResolver(() => ({ provider: 'mock', model: 'mock', effort: null, beforeStart }))
++    const original = ctx.tools.get('subagent', parent)!
++    const replacement = vi.fn(async () => ({ kind: 'activation', name: 'replacement' }))
++    const policy = vi.fn()
++    ctx.on('tools/pre-execute', (_exec, next) => {
++      policy()
++      parent.ctx.tools.register({ ...original, execute: replacement })
++      return next()
++    })
++    const result = await callSubagent(ctx, { description: 'review', prompt: 'review' }, { agent: parent })
++    expect(result.error?.info?.code).toBe('UNKNOWN_TOOL')
++    expect(policy).toHaveBeenCalledTimes(1)
++    expect(replacement).not.toHaveBeenCalled()
++    expect(beforeStart).not.toHaveBeenCalled()
++  })
++
++  it('ignores no-op resolver registration and rejects an unresolved explicit candidate', async () => {
++    const { ctx, parent } = await continuableSetup(true)
++    const args = { description: 'review', prompt: 'review' }
++    const call = (extra = {}) => callSubagent(ctx, { ...args, ...extra }, { agent: parent })
++    const dispose = ctx.subagents.registerModelRouteResolver(() => undefined)
++    expect((await call({ candidate_id: 'missing' })).error?.info?.code).toBe('MODEL_ROUTE_CANDIDATE_UNAVAILABLE')
++    dispose()
++    expect((await call({ candidate_id: 'missing' })).error?.info?.code).toBe('MODEL_ROUTE_CANDIDATE_UNAVAILABLE')
++    expect((await call()).isError).toBe(false)
++  })
++
++  it('invalidates a pending route when the resolver registration is disposed', async () => {
++    const { ctx, parent } = await continuableSetup(true)
++    const entered = Promise.withResolvers<void>()
++    const release = Promise.withResolvers<void>()
++    const beforeStart = vi.fn()
++    const dispose = ctx.subagents.registerModelRouteResolver(async () => {
++      entered.resolve()
++      await release.promise
++      return { provider: 'mock', model: 'mock', effort: null, beforeStart }
++    })
++    const pending = callSubagent(ctx, { description: 'review', prompt: 'review' }, { agent: parent })
++    await entered.promise
++    dispose()
++    release.resolve()
++    expect((await pending).error?.info?.code).toBe('MODEL_ROUTE_CHANGED')
++    expect(beforeStart).not.toHaveBeenCalled()
++  })
++
++  it.each([false, true])('never replays a route when beforeStart fails: %s', async (beforeFails) => {
++    const { ctx, parent } = await continuableSetup(true)
++    const start = vi.spyOn(ctx.subagents, 'startActivation').mockRejectedValueOnce(new Error('submit failed'))
++    const accepted = vi.fn()
++    const unknown = vi.fn()
++    const beforeStart = vi.fn(() => { if (beforeFails) throw new Error('before failed') })
++    ctx.subagents.registerModelRouteResolver(() => ({ provider: 'mock', model: 'mock', effort: null, beforeStart, accepted, unknown }))
++    const pipeline = new ToolExecutionPipeline(ctx)
++    const prepared = await pipeline.prepare({
++      name: 'subagent', arguments: { description: 'review', prompt: 'review' },
++      callId: ToolCallId('repeated-dispatch'), agent: parent, signal: testToolSignal,
++    })
++    if (prepared.kind !== 'dispatch') throw new Error('expected prepared dispatch')
++    const first = await pipeline.dispatch(prepared.exec)
++    expect(text(first.result)).toContain(beforeFails ? 'before failed' : 'submit failed')
++    const repeated = await pipeline.dispatch(prepared.exec)
++    expect(repeated.result.error?.info?.code).toBe('MODEL_ROUTE_ALREADY_DISPATCHED')
++    expect(beforeStart).toHaveBeenCalledTimes(1)
++    expect(start).toHaveBeenCalledTimes(beforeFails ? 0 : 1)
++    expect(accepted).not.toHaveBeenCalled()
++    expect(unknown).toHaveBeenCalledTimes(beforeFails ? 0 : 1)
++  })
++
+   it('classifies local activations concurrency-safe', async () => {
+     const { ctx } = await continuableSetup()
+     expect(new ToolExecutionPipeline(ctx).executionMode({

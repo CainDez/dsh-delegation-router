@@ -82,3 +82,12 @@ test('configuration and authorization read failures suppress advice without touc
   const f=fixture();f.setConfig(null);assert.equal(f.registered[0].text({agent:f.agent}), '');
   mountGuidance(f.ctx,{readConfig:()=>({policy:policy()}),readAuthorization(){throw Error('denied');}});assert.equal(f.registered[1].text({agent:f.agent}), '');
 });
+
+test('native capability advertises one preset for spawn and fork only on a capable host',()=>{
+  const opts={policy:policy(),authorizedRoutes:auth};
+  assert.doesNotMatch(renderGuidance(opts),/For native subagent or subagent_fork/);
+  const text=renderGuidance({...opts,nativeRouting:true});
+  assert.match(text,/For native subagent or subagent_fork, omit all model fields/);
+  assert.match(text,/same candidates apply to Team member creation/);
+  assert.match(text,/Team tasks, messages and the fork conversation remain native/);
+});
