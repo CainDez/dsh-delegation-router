@@ -46,7 +46,16 @@ try {
   const {apply:applyClient} = await hostImport('@deepseek-ai/dsh-api-gateway/client');
   const {draftDescriptors,catalogDescriptors,mountDraftRemote,invokeDraftRemote} = await import('../src/draft-remote.js');
   const generator = {provider:'detached-generator',model:'generator',effort:'high'};
-  const scope = [{provider:'detached-worker',model:'worker',effort:'low'}];
+  const {readStoredDraftPool,compileStoredConfig} = await import('../src/config-sets.js');
+  const scope = [{provider:'detached-worker',model:'worker',effort:'low'}, {provider:'detached-worker',model:'worker',effort:'high'}];
+  const presetOnly = {id:'preset-only',name:'Manual choice',provider:'detached-worker',model:'worker',effort:null};
+  const stored = {schemaVersion:5,enabled:true,activeConfigId:'current',
+    candidates:scope.map((entry,index)=>({id:'pool-'+index,name:'Draft pool '+index,...entry})),
+    configs:[{id:'current',name:'Current',defaultCandidateId:presetOnly.id,candidates:[presetOnly]},
+      {id:'other',name:'Other',candidates:[]}]};
+  const baseline = structuredClone(stored);
+  assert.deepEqual(compileStoredConfig(stored).candidates,[presetOnly]);
+  let poolReads = 0;
   const request = {generator,scope,requirements:'Recommend a bounded daily-work profile.'};
   const generated = {profiles:[{ref:'scope-1',name:'Daily',description:'Suitable for daily work; not guaranteed for hard tasks; exact requested effort.'}],defaultRef:'scope-1',warnings:[]};
   const expected = {candidates:[{id:'scope-1',name:'Daily',...scope[0],description:generated.profiles[0].description}],defaultCandidateId:'scope-1',warnings:[]};
@@ -92,7 +101,7 @@ try {
     modelCatalog(signal) { counts.businessCalls++; return invokeDraftRemote(this,'modelCatalog',undefined,signal); }
   }
   const receiver = new DetachedDraftReceiver(host);
-  await mountDraftRemote(receiver);
+  await mountDraftRemote(receiver,{readScopePool:()=>{poolReads++; return readStoredDraftPool(stored);}});
   await rpcReady;
   assert.equal(host.typert.local.list().length,3);
   for (const descriptor of [...draftDescriptors(),...catalogDescriptors()]) {
@@ -111,6 +120,7 @@ try {
   const ownerEnvelope = await rpc('generateDraft',{request});
   assert.equal(ownerEnvelope.ok,true,JSON.stringify(ownerEnvelope)); assert.deepEqual(ownerEnvelope.value,expected);
   let before = counts.fakePreparations;
+  const readsBeforeDenial = poolReads;
   const denied = await rpc('generateDraft',{request},guest);
   assert.equal(denied.ok,false); assert.equal(denied.error.code,'remote-access/denied');
   assert.equal(counts.fakePreparations,before);
@@ -118,6 +128,7 @@ try {
   const ownerOnly = await rpc('generateDraft',{request},guest);
   assert.equal(ownerOnly.ok,false); assert.equal(ownerOnly.error.code,'gateway/forbidden');
   assert.equal(counts.fakePreparations,before,'business owner guard rejects even a policy grant');
+  assert.equal(poolReads,readsBeforeDenial,'unauthorized caller never reads settings');
   const invalid = await rpc('generateDraft',{request:{...request,requirements:''}});
   assert.equal(invalid.ok,false); assert.equal(counts.fakePreparations,before);
   const extra = await rpc('generateDraft',{request,unexpected:true});
@@ -127,6 +138,23 @@ try {
   assert.equal(validation.ok,true,JSON.stringify(validation));
   assert.deepEqual(validation.value,{candidates:expected.candidates,defaultCandidateId:expected.defaultCandidateId});
   assert.equal(counts.fakePreparations,before,'validation never generates');
+  assert.deepEqual(stored,baseline,'draft remotes never write the pool or presets');
+  const metadataBeforeScopeReject = counts.metadata;
+  const scopeReject = async (method,value) => {
+    const response = await rpc(method,{request:value});
+    assert.equal(response.ok,false,JSON.stringify(response));
+    assert.equal(response.error.code,'delegation-router/draft');
+    assert.equal(response.error.details.code,'DRAFT_SCOPE_NOT_IN_POOL');
+  };
+  const manualScope = [{provider:presetOnly.provider,model:presetOnly.model,effort:presetOnly.effort}];
+  await scopeReject('generateDraft',{...request,scope:manualScope});
+  await scopeReject('validateDraft',{...draft,scope:manualScope,candidates:[{...expected.candidates[0],...manualScope[0]}]});
+  stored.candidates = [];
+  await scopeReject('generateDraft',request);
+  assert.deepEqual(compileStoredConfig(stored),compileStoredConfig(baseline));
+  stored.candidates = structuredClone(baseline.candidates);
+  assert.equal(counts.metadata,metadataBeforeScopeReject,'pool rejections must not consult the model catalog');
+  assert.equal(counts.fakePreparations,before);
 
   // The actual browser factory only gets React; no Zod, DOM, rendering, settings, or live connection.
   let factory;
@@ -181,7 +209,10 @@ try {
   // Execute the actual browser plugin inside a real dependent Cordis fiber, not root.
   // Its self-mounted namespace must use optional ctx.get(), never an undeclared property.
   client.provide('remote.settings',{}); client.provide('remote.session',{});
-  const snapshot = {status:'ready',writable:true,revision:1,user:{ui:browser.emptyDraft()},value:{ui:browser.emptyDraft()}};
+  // A populated legacy fixture also permits browser-side in-memory migration
+  // without giving this detached preflight any Settings write capability.
+  const ui = {...browser.emptyDraft(),schemaVersion:3,candidates:stored.candidates};
+  const snapshot = {status:'ready',writable:true,revision:1,user:{ui},value:{ui}};
   client.provide('configForms',{get:()=>({getSnapshot:()=>snapshot,subscribe:()=>()=>{}}),describe:()=>({load:async()=>{}})});
   client.provide('locale',{bind:()=>key=>browser.dictionaries.en[key]??key,register:()=>()=>{}});
   let scoped, readyResolve, offCatalog;
@@ -211,6 +242,7 @@ try {
     actualHostRegistry:true,actualHostGateway:true,actualHostClientMount:true,actualBrowserDescriptors:true,actualScopedBrowserPlugin:true,scopedGeneratorSelectable:true,isolatedCatalogRpc:true,catalogOwnerGuard:true,
     strictInputRejection:true,ownerRpcEnvelope:true,nonOwnerPolicyRejected:true,nonOwnerBusinessGuardRejected:true,
     sanitizedFailureEnvelope:true,clientCancellation:true,mountDisposal:true,validationWithoutGeneration:true,
+    savedDraftScopeOnly:true,presetOnlyProfileRejected:true,emptyPoolRuntimeIndependent:true,unauthorizedSettingsReads:0,poolReads,
     liveProfile:false,credentialsRead:false,settingsWrites:0,agentsCreated:0,paidCalls:0,...counts},null,2));
 } finally {
   await unmount?.(); await client?.fiber.dispose(); await host?.fiber.dispose();

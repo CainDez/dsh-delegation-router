@@ -57,28 +57,42 @@ function configName(value) {
   return name;
 }
 
-/** Strict v4 storage: one shared candidate pool and lightweight named presets. */
+/** Validate both storage versions without rewriting the original settings. */
 export function normalizeConfigSets(raw) {
   safeData(raw);
+  return normalizeNamedConfigs(raw);
+}
+
+function normalizeNamedConfigs(raw) {
   keys(raw, ['schemaVersion', 'enabled', 'candidates', 'limits', 'activeConfigId', 'configs'], 'configuration sets');
-  if (raw.schemaVersion !== 4) invalid('Unsupported schemaVersion; configuration sets require schemaVersion 4');
+  const { schemaVersion } = raw;
+  if (schemaVersion !== 4 && schemaVersion !== 5) invalid('Unsupported schemaVersion; configuration sets require schemaVersion 4 or 5');
+  const independent = schemaVersion === 5;
   const activeConfigId = configId(raw.activeConfigId, 'activeConfigId');
   if (!Array.isArray(raw.configs) || !raw.configs.length || raw.configs.length > MAX_CONFIGS) invalid('Configuration sets must contain between 1 and 32 configurations');
   const enabled = raw.enabled === undefined ? false : raw.enabled;
   if (typeof enabled !== 'boolean') invalid('Invalid enabled');
-  // Validate global route data with the unchanged strict v3 normalizer. Defaults
-  // belong to presets, so do not invent a global default to validate this pool.
+  // In v5 the shared pool is draft-only; in v4 it is also the route source.
+  // Neither version stores a global default.
   const shared = normalizeConfig({ schemaVersion: 3, enabled: false, candidates: raw.candidates, limits: raw.limits });
-  if (enabled && !shared.candidates.length) invalid('Invalid candidates list');
+  if (!independent && enabled && !shared.candidates.length) invalid('Invalid candidates list');
   const candidateIds = new Set(shared.candidates.map(candidate => candidate.id));
   const ids = new Set(), names = new Set();
   const configs = raw.configs.map(entry => {
-    keys(entry, ['id', 'name', 'defaultCandidateId', 'overrides'], 'configuration preset');
+    keys(entry, ['id', 'name', 'defaultCandidateId', independent ? 'candidates' : 'overrides'], 'configuration preset');
     const id = configId(entry.id, 'configuration id'), name = configName(entry.name);
     if (ids.has(id)) invalid('Duplicate configuration id: ' + id);
     if (names.has(name.toLowerCase())) invalid('Duplicate configuration name: ' + name);
     ids.add(id); names.add(name.toLowerCase());
-    const defaultCandidateId = entry.defaultCandidateId;
+    const { defaultCandidateId } = entry;
+    if (independent) {
+      if (!Array.isArray(entry.candidates)) invalid('Preset candidates must be a list');
+      // Structurally validate every preset. Only the active one is subject to
+      // the enabled-policy requirements (non-empty list and a local default).
+      const { candidates } = normalizeConfig({ schemaVersion: 3, enabled: enabled && id === activeConfigId,
+        candidates: entry.candidates, defaultCandidateId });
+      return Object.freeze({ id, name, ...(defaultCandidateId === undefined ? {} : { defaultCandidateId }), candidates });
+    }
     if ((enabled || defaultCandidateId !== undefined) && !candidateIds.has(defaultCandidateId)) invalid('Preset defaultCandidateId must explicitly reference a global candidate id');
     const overridesRaw = entry.overrides === undefined ? [] : entry.overrides;
     if (!Array.isArray(overridesRaw) || overridesRaw.length > shared.candidates.length) invalid('Invalid preset overrides list');
@@ -96,19 +110,29 @@ export function normalizeConfigSets(raw) {
     return Object.freeze(result);
   });
   if (!ids.has(activeConfigId)) invalid('activeConfigId must explicitly reference a configuration id');
-  return Object.freeze({ schemaVersion: 4, enabled, candidates: shared.candidates, limits: shared.limits, activeConfigId, configs: Object.freeze(configs) });
+  return Object.freeze({ schemaVersion, enabled, candidates: shared.candidates, limits: shared.limits, activeConfigId, configs: Object.freeze(configs) });
 }
 
-/** Compile only preset labels/default over global routes, enablement and limits. */
+/** Project only the active preset into the runtime policy; v4 overlays its shared routes. */
 export function compileStoredConfig(raw) {
   safeData(raw);
-  if (raw && typeof raw === 'object' && raw.schemaVersion === 4) {
-    const normalized = normalizeConfigSets(raw);
-    const active = normalized.configs.find(entry => entry.id === normalized.activeConfigId);
+  if (raw?.schemaVersion !== 4 && raw?.schemaVersion !== 5) return normalizeConfig(raw);
+  const normalized = normalizeNamedConfigs(raw);
+  const active = normalized.configs.find(entry => entry.id === normalized.activeConfigId);
+  let candidates = active.candidates;
+  if (normalized.schemaVersion === 4) {
     const overrides = new Map(active.overrides.map(override => [override.id, override]));
-    return normalizeConfig({ schemaVersion: 3, enabled: normalized.enabled, limits: normalized.limits,
-      candidates: normalized.candidates.map(candidate => ({ ...candidate, ...overrides.get(candidate.id) })),
-      ...(active.defaultCandidateId === undefined ? {} : { defaultCandidateId: active.defaultCandidateId }) });
+    candidates = normalized.candidates.map(candidate => ({ ...candidate, ...overrides.get(candidate.id) }));
   }
-  return normalizeConfig(raw);
+  return normalizeConfig({ schemaVersion: 3, enabled: normalized.enabled, limits: normalized.limits, candidates,
+    defaultCandidateId: active.defaultCandidateId });
+}
+
+/** Named settings constrain draft scope to their stored pool. Unnamed v3 and
+ * absent settings historically use the model catalog, not their route lists. */
+export function readStoredDraftPool(raw) {
+  safeData(raw);
+  if (raw?.schemaVersion === 4 || raw?.schemaVersion === 5) return normalizeNamedConfigs(raw).candidates;
+  normalizeConfig(raw);
+  return undefined;
 }

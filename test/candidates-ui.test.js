@@ -58,16 +58,33 @@ function flatten(node) {
   return [node, ...flatten(node.props?.children)];
 }
 const page = h => flatten(plugin.RouterPage({ editor: h.editor, catalog: h.catalog, t, view: 'page' }));
-const field = (h, key, type = 'select') => page(h).find(node => node?.type === type && node.props['aria-label'] === t(key));
-const button = (h, key) => page(h).find(node => node?.type === 'button' && node.props.children.includes(t(key)));
+const panel = (nodes, key) => flatten(nodes.find(node => node?.props?.['data-workspace-panel'] === key));
+const control = (nodes, key, type = 'select') => nodes.find(node => node?.type === type && node.props['aria-label'] === t(key));
+const action = (nodes, key) => nodes.find(node => node?.type === 'button' && node.props.children.includes(t(key)));
+const field = (h, key, type = 'select') => control(key === 'enabled' ? page(h) : panel(page(h), 'details'), key, type);
+const button = (h, key) => action(panel(page(h), 'details'), key);
+function workspace(h) {
+  let active;
+  return () => {
+    const useState = React.useState;
+    let tree;
+    React.useState = initial => [active ?? initial, next => { active = next; }];
+    try { tree = plugin.RouterPage({ editor: h.editor, catalog: h.catalog, t, view: 'page' }); }
+    finally { React.useState = useState; }
+    return flatten(tree);
+  };
+}
 
 test('same model supports named candidates with one effort and no automatic default', async () => {
   const h = harness(); await h.catalog.load(); const before = h.current();
   assert.equal(h.editor.getSnapshot().draft.defaultCandidateId, undefined);
-  assert.deepEqual(page(h).filter(node => node?.type === 'select' && node.props['aria-label'] === t('effort')).map(node => node.props.value), [JSON.stringify('brief'), JSON.stringify('deep')]);
+  assert.deepEqual(panel(page(h), 'details').filter(node => node?.type === 'select' && node.props['aria-label'] === t('effort')).map(node => node.props.value), [JSON.stringify('brief'), JSON.stringify('deep')]);
   field(h, 'defaultCandidate').props.onChange({ target: { value: 'deep' } }); field(h, 'enabled', 'input').props.onChange({ target: { checked: true } });
   assert.deepEqual(h.current(), before); assert.equal(await h.editor.save(), true);
-  assert.deepEqual(h.current().value.ui.candidates, candidates()); assert.equal(h.current().value.ui.defaultCandidateId, 'deep');
+  const saved = h.current().value.ui;
+  assert.equal(saved.schemaVersion, 5);
+  assert.deepEqual(saved.configs[0].candidates, candidates()); assert.equal(saved.configs[0].defaultCandidateId, 'deep');
+  assert.deepEqual(saved.candidates, candidates()); assert.equal(saved.enabled, true);
   assert.equal(Object.hasOwn(h.current().value.ui, 'teams'), false); h.dispose();
 });
 
@@ -128,7 +145,10 @@ test('only an explicit native replacement releases the readonly invalid state af
   await h.editor.reload(); assert.equal(h.editor.getSnapshot().invalidSource, false);
   field(h, 'description', 'input').props.onChange({ target: { value: 'manual v3 edit' } });
   assert.equal(await h.editor.save(), true); assert.equal(h.mutations.length, 1); assert.equal(h.mutations[0].revision, 8);
-  assert.deepEqual(h.mutations[0].ops[0].value, { ...replacement, candidates: [{ ...candidates()[0], description: 'manual v3 edit' }, candidates()[1]] }); h.dispose();
+  const written = h.mutations[0].ops[0].value;
+  assert.equal(written.schemaVersion, 5);
+  assert.deepEqual(written.configs[0].candidates, [{ ...candidates()[0], description: 'manual v3 edit' }, candidates()[1]]);
+  assert.deepEqual(written.candidates, replacement.candidates); h.dispose();
 });
 
 test('invalid effective or hidden raw sources fence stale callbacks and preserve dirty v3 drafts', async () => {
@@ -179,11 +199,18 @@ test('both languages expose responsive native controls and honest capability bou
 });
 
 test('ack normalization fills only descriptions and documented defaults, not routes or unknown extras', () => {
-  const base = { schemaVersion: 3, enabled: false, candidates: [candidates()[0]] }; delete base.candidates[0].description;
-  assert.deepEqual(copy(plugin.normalizeAckUi(base)), { ...copy(plugin.emptyDraft()), candidates: [{ ...candidates()[0], description: '' }] });
-  const changed = copy(base); changed.candidates[0].effort = null; assert.notDeepEqual(copy(plugin.normalizeAckUi(base)), copy(plugin.normalizeAckUi(changed)));
-  changed.candidates[0].effort = 'brief'; changed.candidates[0].unknown = []; assert.notDeepEqual(copy(plugin.normalizeAckUi(base)), copy(plugin.normalizeAckUi(changed)));
-  // A persistent empty or non-v3 source is never repaired into a valid v3 acknowledgement.
+  const { description: _description, ...profile } = candidates()[0];
+  const base = { schemaVersion: 5, candidates: [profile], activeConfigId: 'a', configs: [{ id: 'a', name: 'Alpha', candidates: [profile] }] };
+  assert.deepEqual(copy(plugin.normalizeAckUi(base)), { ...base, enabled: false, limits: copy(plugin.emptyDraft().limits),
+    candidates: [{ ...profile, description: '' }], configs: [{ ...base.configs[0], candidates: [{ ...profile, description: '' }] }] });
+  for (const rows of [ui => ui.candidates, ui => ui.configs[0].candidates]) {
+    const changed = copy(base);
+    rows(changed)[0].effort = null;
+    assert.notDeepEqual(copy(plugin.normalizeAckUi(base)), copy(plugin.normalizeAckUi(changed)));
+    rows(changed)[0].effort = 'brief'; rows(changed)[0].unknown = [];
+    assert.deepEqual(copy(plugin.normalizeAckUi(changed)), changed);
+  }
+  // An empty or malformed source is never repaired into a valid v5 acknowledgement.
   assert.deepEqual(copy(plugin.normalizeAckUi({})), {});
   assert.deepEqual(copy(plugin.normalizeAckUi({ schemaVersion: 3, candidates: [], extra: true })), { schemaVersion: 3, candidates: [], extra: true });
 });
@@ -216,7 +243,7 @@ test('explicit model selection fixes the pair and derives the exact advertised e
   field(h, 'name', 'input').props.onChange({ target: { value: 'Mine' } });
   field(h, 'defaultCandidate').props.onChange({ target: { value: 'candidate-1' } });
   assert.equal(await h.editor.save(), true);
-  assert.deepEqual(h.current().value.ui.candidates, [{ id: 'candidate-1', name: 'Mine', provider: 'p', model: 'plain', effort: null, description: '' }]);
+  assert.deepEqual(h.current().value.ui.configs[0].candidates, [{ id: 'candidate-1', name: 'Mine', provider: 'p', model: 'plain', effort: null, description: '' }]);
   h.dispose();
 });
 
@@ -256,7 +283,7 @@ test('saved exact custom or null efforts survive catalog changes without silent 
     assert.deepEqual(copy(h.editor.getSnapshot()), before); assert.equal(h.editor.getSnapshot().dirty, false);
     assert.equal(page(h).includes(t('noReasoning')), false);
     field(h, 'description', 'input').props.onChange({ target: { value: 'Edited only description' } });
-    assert.equal(await h.editor.save(), true); assert.equal(h.current().value.ui.candidates[0].effort, effort); h.dispose();
+    assert.equal(await h.editor.save(), true); assert.equal(h.current().value.ui.configs[0].candidates[0].effort, effort); h.dispose();
   }
 });
 
@@ -268,15 +295,57 @@ test('blank candidates block autosave until complete and enabling requires an ex
   assert.equal(h.mutations.length, 0);
   field(h, 'name', 'input').props.onChange({ target: { value: 'Incomplete' } });
   field(h, 'chooseModel').props.onChange({ target: { value: plugin.modelKey({ provider: 'p', model: 'm1' }) } });
-  assert.equal(plugin.validDraft(h.editor.getSnapshot().draft), false); // effort still unselected
+  assert.equal(plugin.validDraft(h.editor.getSnapshot().draft), false); // enabling still requires a preset default
   field(h, 'effort').props.onChange({ target: { value: JSON.stringify('brief') } });
   assert.equal(plugin.validDraft(h.editor.getSnapshot().draft), false); // enabled without default
   assert.ok(page(h).some(node => typeof node === 'string' && node.includes(t('autosaveIncomplete'))));
   field(h, 'defaultCandidate').props.onChange({ target: { value: 'candidate-1' } });
   assert.equal(plugin.validDraft(h.editor.getSnapshot().draft), true);
   assert.equal(await h.editor.save(), true); assert.equal(h.mutations.length, 1);
-  assert.deepEqual(h.current().value.ui.candidates, [{ id: 'candidate-1', name: 'Incomplete', provider: 'p', model: 'm1', effort: 'brief', description: '' }]);
+  assert.deepEqual(h.current().value.ui.configs[0].candidates, [{ id: 'candidate-1', name: 'Incomplete', provider: 'p', model: 'm1', effort: 'brief', description: '' }]);
   h.dispose();
+});
+
+test('preset and draft-pool controls edit separate complete profiles using the full catalog', async testContext => {
+  const [fast, deep] = candidates(), ui = { schemaVersion: 5, enabled: true, activeConfigId: 'a',
+    limits: copy(plugin.emptyDraft().limits), candidates: [{ ...fast, name: 'Pool only' }], configs: [
+      { id: 'a', name: 'Active', candidates: [fast], defaultCandidateId: 'fast' },
+      { id: 'b', name: 'Other', candidates: [deep], defaultCandidateId: 'deep' }
+    ] };
+  const h = harness({ ui }); testContext.after(() => h.dispose()); await h.catalog.load();
+  const render = workspace(h);
+  const details = () => panel(render(), 'details'), pool = () => panel(render(), 'pool');
+  const cards = (nodes, key) => nodes.filter(node => node?.props && Object.hasOwn(node.props, key));
+  assert.equal(cards(details(), 'data-candidate').length, 1);
+  assert.equal(cards(details(), 'data-pool-candidate').length, 0);
+  assert.equal(action(details(), 'addPoolCandidate'), undefined);
+  const model = control(details(), 'chooseModel');
+  const fullCatalog = ['m1', 'm2', 'plain'].map(id => plugin.modelKey({ provider: 'p', model: id }));
+  for (const key of fullCatalog) assert.ok(flatten(model).some(node => node?.type === 'option' && node.props.value === key));
+  model.props.onChange({ target: { value: fullCatalog[1] } });
+  control(details(), 'effort').props.onChange({ target: { value: JSON.stringify('max') } });
+  control(details(), 'name', 'input').props.onChange({ target: { value: 'My active profile' } });
+  control(details(), 'description', 'input').props.onChange({ target: { value: 'Active role' } });
+  assert.equal(await h.editor.save(), true);
+  const active = { ...ui.configs[0], candidates: [{ ...fast, name: 'My active profile', model: 'm2', effort: 'max', description: 'Active role' }] };
+  assert.deepEqual(h.current().value.ui, { ...ui, configs: [active, ui.configs[1]] });
+
+  render().find(node => node?.props?.['data-workspace-nav'] === 'pool').props.onClick();
+  assert.equal(cards(pool(), 'data-pool-candidate').length, 1);
+  assert.equal(cards(pool(), 'data-candidate').length, 0);
+  assert.equal(action(pool(), 'addCandidate'), undefined);
+  assert.equal(control(pool(), 'defaultCandidate'), undefined);
+  action(pool(), 'remove').props.onClick();
+  assert.equal(await h.editor.save(), true);
+  assert.deepEqual(h.current().value.ui, { ...ui, candidates: [], configs: [active, ui.configs[1]] });
+  action(pool(), 'addPoolCandidate').props.onClick();
+  assert.equal(await h.editor.save(), false); // An incomplete pool card must not autosave.
+  control(pool(), 'poolName', 'input').props.onChange({ target: { value: 'New draft-pool profile' } });
+  control(pool(), 'chooseModel').props.onChange({ target: { value: fullCatalog[2] } });
+  assert.equal(await h.editor.save(), true);
+  const saved = h.current().value.ui;
+  assert.deepEqual(saved.configs, [active, ui.configs[1]]);
+  assert.deepEqual(saved.candidates, [{ id: 'candidate-1', name: 'New draft-pool profile', provider: 'p', model: 'plain', effort: null, description: '' }]);
 });
 
 test('candidate cap of 128 is enforced on the add button and editor', async () => {

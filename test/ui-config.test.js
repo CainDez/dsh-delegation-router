@@ -33,6 +33,8 @@ test('schema describes fixed candidates and the required schema version', () => 
   assert.match(RouterConfig.dict.ui.meta.description, /候选/);
   assert.match(RouterConfig.dict.ui.meta.description, /schemaVersion 3/);
   assert.match(RouterConfig.dict.ui.meta.description, /schemaVersion 4/);
+  assert.match(RouterConfig.dict.ui.meta.description, /schemaVersion 5/);
+  assert.match(RouterConfig.dict.ui.meta.description, /仅用于生成草稿/);
   assert.match(RouterConfig.dict.ui.meta.description, /全局共享/);
   assert.doesNotMatch(RouterConfig.dict.ui.meta.description, /policy|别名/);
 });
@@ -187,6 +189,34 @@ test('shared pool mutations affect every preset but no preset can own routes, en
   for (const key of ['policy', 'candidates', 'enabled', 'limits', 'provider', 'model', 'effort']) {
     const bad = multi(); bad.configs[1][key] = undefined; invalid({ ui: bad });
   }
+});
+
+test('v5 pool-only and inactive edits are live-safe during preparation or active child work', () => {
+  const raw = { ui: { schemaVersion: 5, enabled: true, activeConfigId: 'first', candidates: [candidate('draft-only')], configs: [
+    { id: 'first', name: 'First', candidates: [candidate()], defaultCandidateId: 'fast' },
+    { id: 'second', name: 'Second', candidates: [candidate('other', 'high')], defaultCandidateId: 'other' },
+  ] }, auditFile: 'C:/global/audit.jsonl' };
+  const router = new LiveRouter({ readConfig: () => compilePluginConfig(raw), createJournal: () => new MemoryJournal() });
+  try {
+    const original = compilePluginConfig(raw), runtime = router.ensure(), initial = router.status();
+    for (const pending of [false, true]) {
+      router.inFlight = pending ? 0 : 1; router.latest = pending ? new Map([['child', 'accepted']]) : new Map();
+      raw.ui.candidates = pending ? [candidate('replacement', 'high')] : [];
+      raw.ui.configs[0].name = 'Renamed'; raw.ui.configs[1].candidates[0].model = 'inactive-model';
+      const compiled = compilePluginConfig(raw);
+      assert.deepEqual(compiled, original);
+      assert.doesNotThrow(() => router.validateUpdate(compiled));
+      assert.equal(router.ensure(), runtime); assert.equal(router.status().configuredRevision, initial.configuredRevision);
+      assert.equal(router.status().configurationPending, false);
+      const switched = structuredClone(raw); switched.ui.activeConfigId = 'second';
+      assert.throws(() => router.validateUpdate(compilePluginConfig(switched)), { code: 'CONFIG_BUSY' });
+      const manuallyChanged = structuredClone(raw); manuallyChanged.ui.configs[0].candidates[0].model = 'outside-draft-pool';
+      assert.throws(() => router.validateUpdate(compilePluginConfig(manuallyChanged)), { code: 'CONFIG_BUSY' });
+    }
+    router.inFlight = 0; router.latest.clear(); raw.ui.configs[0].candidates[0].model = 'outside-draft-pool';
+    assert.doesNotThrow(() => router.validateUpdate(compilePluginConfig(raw))); assert.notEqual(router.ensure(), runtime);
+    assert.equal(compilePluginConfig(raw).policy.candidates[0].model, 'outside-draft-pool');
+  } finally { router.close(); }
 });
 
 test('preset compilation preserves LiveRouter CONFIG_BUSY, disable and global audit-path boundaries', () => {

@@ -136,5 +136,5 @@ test('authorization uses the first policy event and current parent route', () =>
 
 test('example and UI defaults remain opt-in', () => {
   for (const input of [{}, sample]) assert.equal(compilePluginConfig(input).policy.enabled, false);
-  for (const ui of [client.emptyDraft(), client.draftFrom({})]) assert.equal(ui.enabled, false);
+  for (const ui of [client.emptyDraft(), client.projectConfigSet(client.configSetFrom({}, 'Default'))]) assert.equal(ui.enabled, false);
 });

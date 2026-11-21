@@ -85,7 +85,10 @@ test('600ms trailing debounce submits only the latest draft and revision once', 
   assert.equal(h.mutations.length, 0); rename(h, 'latest'); await h.clock.tick(599);
   assert.equal(h.mutations.length, 0); await h.clock.tick(1);
   assert.equal(h.mutations.length, 1); assert.equal(h.mutations[0].revision, 7);
-  assert.equal(h.mutations[0].ops[0].value.candidates[0].name, 'latest');
+  const written = h.mutations[0].ops[0].value;
+  assert.equal(written.schemaVersion, 5);
+  assert.equal(written.configs[0].candidates[0].name, 'latest');
+  assert.deepEqual(written.candidates, storedUI().candidates);
   assert.deepEqual(h.mutations[0].ops.map(row => [row.op, row.path]), [['set', ['ui']]]);
   assert.equal(h.editor.getSnapshot().saved, true); assert.equal(h.editor.getSnapshot().autosavePaused, false);
   await h.clock.tick(6000); assert.equal(h.mutations.length, 1);
@@ -95,7 +98,7 @@ test('valid to invalid edits cancel old work; only a repaired draft saves', asyn
   const h = harness(t); rename(h, 'valid'); await h.clock.tick(599); rename(h, '');
   await h.clock.tick(6000); assert.equal(h.mutations.length, 0); assert.equal(h.clock.pending.size, 0);
   rename(h, 'repaired'); await h.clock.tick(600); assert.equal(h.mutations.length, 1);
-  assert.equal(h.mutations[0].ops[0].value.candidates[0].name, 'repaired');
+  assert.equal(h.mutations[0].ops[0].value.configs[0].candidates[0].name, 'repaired');
 });
 
 test('missing defaults, duplicate IDs and invalid limits never enter the autosave queue', async t => {
@@ -127,7 +130,13 @@ test('inclusive limit boundaries and omitted limits save without coercion', asyn
     });
     const desired = copy(h.editor.getSnapshot().draft);
     await h.clock.tick(600); assert.equal(h.mutations.length, 1);
-    assert.deepEqual(h.mutations[0].ops[0].value, desired);
+    const { schemaVersion, configs, candidates: pool, limits, enabled } = h.mutations[0].ops[0].value;
+    assert.equal(schemaVersion, 5);
+    assert.deepEqual(pool, storedUI().candidates);
+    assert.deepEqual(configs[0].candidates, desired.candidates);
+    assert.equal(configs[0].defaultCandidateId, desired.defaultCandidateId);
+    assert.equal(enabled, desired.enabled);
+    assert.deepEqual(limits, desired.limits);
     assert.equal(h.editor.getSnapshot().saved, true);
   }
 });
@@ -139,7 +148,7 @@ test('native IME handlers cancel pending saves until composition end plus 600ms'
   await h.clock.tick(6000); assert.equal(h.mutations.length, 0); assert.equal(await h.editor.save(), false);
   input.props.onCompositionEnd(); await h.clock.tick(599); assert.equal(h.mutations.length, 0);
   await h.clock.tick(1); assert.equal(h.mutations.length, 1);
-  assert.equal(h.mutations[0].ops[0].value.candidates[0].name, '中文输入中');
+  assert.equal(h.mutations[0].ops[0].value.configs[0].candidates[0].name, '中文输入中');
 });
 
 test('explicit refusal pauses autosave across edits and notifications; explicit retry alone resumes', async t => {
@@ -151,7 +160,7 @@ test('explicit refusal pauses autosave across edits and notifications; explicit 
   assert.equal(h.mutations.length, 1); assert.equal(h.editor.getSnapshot().error, 'original refusal');
   h.mutate = async row => { h.ack(row); return { ok: true }; };
   button(h, 'retry').props.onClick(); await flush();
-  assert.equal(h.mutations.length, 2); assert.equal(h.mutations[1].ops[0].value.candidates[0].name, 'retained latest');
+  assert.equal(h.mutations.length, 2); assert.equal(h.mutations[1].ops[0].value.configs[0].candidates[0].name, 'retained latest');
   assert.equal(h.editor.getSnapshot().saved, true);
   rename(h, 'new edit'); await h.clock.tick(600); assert.equal(h.mutations.length, 3);
 });
@@ -223,7 +232,7 @@ test('superseded timer callbacks and an explicit save cannot duplicate a write',
   stale(); await flush(); assert.equal(h.mutations.length, 0);
   const current = h.clock.latest(); assert.equal(await h.editor.save(), true);
   current(); await h.clock.tick(6000); assert.equal(h.mutations.length, 1);
-  assert.equal(h.mutations[0].ops[0].value.candidates[0].name, 'new');
+  assert.equal(h.mutations[0].ops[0].value.configs[0].candidates[0].name, 'new');
 });
 
 test('editing remains blocked throughout mutation and mirror verification', async t => {
@@ -287,7 +296,7 @@ test('saved-but-overridden stays paused and status UI has no normal save or unsa
   assert.equal(status.props.style.position, undefined); // status must not cover inputs on small screens
   assert.equal(button(h, 'save'), undefined); assert.equal(button(h, 'retry'), undefined);
   assert.ok(flatten(status).some(node => node?.props?.role === 'status' && node.props['aria-live'] === 'polite'));
-  h.mutate = async row => { const ui = copy(row.ops[0].value); ui.candidates[0].effort = 'higher-layer'; h.ack(row, { ui }); return { ok: true }; };
+  h.mutate = async row => { const ui = copy(row.ops[0].value); ui.configs[0].candidates[0].effort = 'higher-layer'; h.ack(row, { ui }); return { ok: true }; };
   rename(h, 'overridden'); await h.clock.tick(600);
   assert.equal(h.editor.getSnapshot().savedButNotLive, true); assert.equal(h.editor.getSnapshot().autosavePaused, true);
   assert.ok(page(h).includes(translate('savedButNotLive'))); assert.equal(button(h, 'retry'), undefined);

@@ -23,14 +23,23 @@ const native = () => ({ groups: [{ id: 'p', models: [
   { id: 'explicit', reasoning: { efforts: [{ id: 'custom' }] } },
   { id: 'plain' }
 ] }], failures: [] });
+const draftPool = () => [
+  { id: 'pool-low', name: 'Pool quick', ...low, description: 'Unchanged low metadata' },
+  { id: 'pool-high', name: 'Pool thorough', ...high, description: 'Unchanged high metadata' },
+  { id: 'pool-plain', name: 'Pool plain', ...plain, description: '' }
+];
+const activeConfig = ui => ui.configs.find(row => row.id === ui.activeConfigId);
 const generated = () => ({ candidates: [
   { id: 'scope-1', name: 'Quick', ...low, description: 'Small edits' },
   { id: 'scope-2', name: 'Thorough', ...high, description: 'Review' }
 ], defaultCandidateId: 'scope-1', warnings: ['Review these suggestions.'] });
 
-async function harness(testContext, overrides = {}) {
-  const ui = { ...copy(plugin.emptyDraft()), enabled: true, candidates: [{ id: 'old', name: 'Existing', ...low, description: 'Keep until confirmed' }], defaultCandidateId: 'old' };
-  ui.limits.maxActivePerModel = 3;
+async function harness(testContext, overrides = {}, scope = [low, high]) {
+  const ui = { schemaVersion: 5, enabled: true, candidates: draftPool(), activeConfigId: 'a',
+    limits: { ...copy(plugin.emptyDraft().limits), maxActivePerModel: 3 }, configs: [
+      { id: 'a', name: 'Alpha preset', candidates: [{ id: 'old', name: 'Existing', ...low, description: 'Keep until confirmed' }], defaultCandidateId: 'old' },
+      { id: 'b', name: 'Beta preset', candidates: [{ id: 'beta', name: 'Other preset profile', ...high, description: 'Never overwrite' }], defaultCandidateId: 'beta' }
+    ] };
   const value = { ui, auditFile: 'D:/audit/keep.jsonl' };
   let snapshot = { status: 'ready', writable: true, revision: 7, value: copy(value), user: copy(value), ...overrides };
   const listeners = new Set(), pendingTimers = new Map(); let timerId = 0;
@@ -57,7 +66,7 @@ async function harness(testContext, overrides = {}) {
   h.dispose = () => { h.generator.dispose(); h.catalog.dispose(); h.editor.dispose(); };
   testContext.after(h.dispose);
   await h.catalog.load();
-  h.configure = () => { assert.equal(h.generator.selectGenerator(plugin.modelKey(low)), true); assert.equal(h.generator.setScope([low, high]), true); assert.equal(h.generator.setRequirements('Use quick edits and careful review profiles.'), true); };
+  h.configure = () => { assert.equal(h.generator.selectGenerator(plugin.modelKey(low)), true); assert.equal(h.generator.setScope(scope), true); assert.equal(h.generator.setRequirements('Use quick edits and careful review profiles.'), true); };
   h.configure(); return h;
 }
 function flatten(node) {
@@ -136,13 +145,13 @@ test('failed RPC mount reports unavailable draft UI without removing manual edit
   workspaceNav(render(), 'pool').props.onClick();
   const pool = workspacePanel(render(), 'pool');
   assert.equal(pool.props.hidden, false);
-  const add = flatten(pool).find(row => row?.type === 'button' && row.props.children.includes(t('addCandidate')));
+  const add = flatten(pool).find(row => row?.type === 'button' && row.props.children.includes(t('addPoolCandidate')));
   assert.equal(add.props.disabled, false); assert.equal(mounted.props.editor.editable(), true);
   assert.equal(h.calls.length, 0); assert.equal(h.mutations.length, 0); await mounted.dispose();
 });
 
 test('workspace navigation shows only preset details by default and does not write settings', async testContext => {
-  const h = await harness(testContext, v4Fixture()), before = h.current();
+  const h = await harness(testContext, v4Fixture(), [low]), before = h.current();
   const render = workspace(workspaceProps(h));
   const assertPanel = (nodes, active) => {
     for (const key of ['details', 'pool', 'draft']) {
@@ -178,8 +187,11 @@ test('v4 wizard selects its generator from the catalog, but delegation scope fro
     { id: 'dupe-1', name: 'Ambiguous high 1', ...high },
     { id: 'dupe-2', name: 'Ambiguous high 2', ...high }
   ]);
-  const h = await harness(testContext, fixture);
-  assert.equal(button(h, 'draftGenerate').props.disabled, true); // Fixture input also includes the now-ambiguous high effort.
+  const h = await harness(testContext, fixture, []);
+  assert.equal(button(h, 'draftGenerate').props.disabled, true);
+  assert.equal(h.generator.setScope([high]), false);
+  assert.equal(await h.generator.generate(), false); // The two pool matches must not permit a generated request.
+  assert.equal(h.calls.length, 0);
   assert.equal(h.generator.setScope([]), true);
   const nodes = wizard(h);
   const generator = nodes.find(row => row?.type === 'select' && row.props['aria-label'] === t('draftGenerator'));
@@ -203,9 +215,39 @@ test('v4 wizard selects its generator from the catalog, but delegation scope fro
   assert.equal(h.mutations.length, 0);
 });
 
+test('v3 seeds the draft scope from persisted candidates; v5 never falls back to active profiles or the catalog', async testContext => {
+  const catalogOnly = { provider: 'p', model: 'explicit', effort: 'custom' };
+  const existing = { id: 'old', name: 'Existing', ...low, description: '' };
+  const sources = [
+    { schemaVersion: 3, enabled: true, candidates: [existing], defaultCandidateId: 'old' },
+    { schemaVersion: 5, enabled: true, candidates: [draftPool()[0]], activeConfigId: 'a', configs: [
+      { id: 'a', name: 'Alpha', candidates: [existing, { id: 'manual-only', name: 'Manual-only profile', ...high, description: '' }], defaultCandidateId: 'old' }
+    ] }
+  ];
+  for (const ui of sources) {
+    const h = await harness(testContext, { value: { ui }, user: { ui: copy(ui) } }, []);
+    const scope = wizard(h).find(row => row?.props?.role === 'region' && row.props['aria-label'] === t('draftScope'));
+    const labels = flatten(scope).filter(row => row?.type === 'label');
+    assert.equal(labels.length, 1);
+    assert.ok(flatten(labels[0]).includes(ui.schemaVersion === 3 ? 'Existing · p / m / low' : 'Pool quick · p / m / low'));
+    for (const unavailable of [high, catalogOnly]) {
+      assert.equal(h.generator.setScope([unavailable]), false);
+      assert.equal(await h.generator.generate(), false);
+    }
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.mutations.length, 0);
+    assert.deepEqual(h.current().value.ui, ui);
+    assert.equal(h.generator.setScope([low]), true);
+    h.generate = async () => ({ ...generated(), candidates: [generated().candidates[0]] });
+    assert.equal(await h.generator.generate(), true);
+    assert.deepEqual(h.calls[0].request.scope, [low]);
+    assert.equal(h.mutations.length, 0);
+  }
+});
+
 test('generation through the settings form focuses review only when the draft panel is visible', async testContext => {
   for (const hidden of [false, true]) {
-    const h = await harness(testContext, v4Fixture());
+    const h = await harness(testContext, v4Fixture(), [low]);
     h.generator.setScope([low]);
     h.generate = async () => ({ ...generated(), candidates: [generated().candidates[0]] });
     const calls = [];
@@ -239,7 +281,7 @@ test('generation through the settings form focuses review only when the draft pa
 });
 
 test('a generated draft review and its navigation badge never appear in another preset', async testContext => {
-  const h = await harness(testContext, v4Fixture());
+  const h = await harness(testContext, v4Fixture(), [low]);
   assert.equal(h.generator.setScope([low]), true);
   h.generate = async () => ({ ...generated(), candidates: [generated().candidates[0]] });
   assert.equal(await h.generator.generate(), true);
@@ -267,10 +309,11 @@ test('a generated draft review and its navigation badge never appear in another 
 test('full triples generate a detached draft; reviewed application validates then saves exactly once', async testContext => {
   const h = await harness(testContext), before = h.current(), original = copy(h.editor.getSnapshot().draft);
   assert.equal(h.calls.length, 0); assert.equal(h.pendingTimers.size, 0);
+  assert.equal(h.generator.setScope([low, high, plain]), true); // Plain is in scope but not in the reviewed output.
   assert.equal(await h.generator.generate(), true);
   assert.deepEqual(copy(h.editor.getSnapshot().draft), original); assert.deepEqual(h.current(), before);
   assert.equal(h.editor.getSnapshot().dirty, false); assert.equal(h.pendingTimers.size, 0); assert.equal(h.mutations.length, 0);
-  assert.deepEqual(h.calls[0].request, { generator: low, scope: [low, high], requirements: 'Use quick edits and careful review profiles.' });
+  assert.deepEqual(h.calls[0].request, { generator: low, scope: [low, high, plain], requirements: 'Use quick edits and careful review profiles.' });
   assert.equal(h.generator.editCandidate('scope-1', { name: 'My name', description: 'Manual review of draft only' }), true);
   assert.equal(h.generator.setDefault('scope-2'), true);
   assert.equal(await h.generator.validateAndApply(), false); assert.equal(h.calls.length, 1);
@@ -281,7 +324,13 @@ test('full triples generate a detached draft; reviewed application validates the
   assert.deepEqual(h.mutations[0].ops.map(row => [row.op, row.path]), [['set', ['ui']]]);
   const saved = h.current().value;
   assert.equal(saved.ui.enabled, true); assert.deepEqual(saved.ui.limits, original.limits); assert.equal(saved.auditFile, before.value.auditFile);
-  assert.equal(saved.ui.defaultCandidateId, 'scope-2'); assert.equal(saved.ui.candidates[0].name, 'My name');
+  assert.equal(saved.ui.schemaVersion, 5);
+  assert.deepEqual(saved.ui.candidates, before.value.ui.candidates);
+  assert.deepEqual(saved.ui.configs[1], before.value.ui.configs[1]);
+  assert.deepEqual(activeConfig(saved.ui), { id: 'a', name: 'Alpha preset', defaultCandidateId: 'pool-high', candidates: [
+    { id: 'pool-low', name: 'My name', ...low, description: 'Manual review of draft only' },
+    { id: 'pool-high', name: 'Thorough', ...high, description: 'Review' }
+  ] });
   assert.equal(h.generator.getSnapshot().status, 'applied'); assert.equal(h.pendingTimers.size, 0);
   assert.equal(await h.generator.validateAndApply(), false); await h.flushTimers(); assert.equal(h.mutations.length, 1);
 });
@@ -370,7 +419,8 @@ test('minimal validation output is composed safely; diagnostics and outer config
   assert.equal(await h.generator.validateAndApply(), true);
   assert.equal(h.current().value.ui.enabled, true); assert.equal(h.current().value.ui.limits.maxActivePerModel, 3);
   assert.equal(h.current().value.auditFile, 'D:/audit/keep.jsonl'); assert.equal(Object.hasOwn(h.current().value.ui, 'scope'), false);
-  assert.ok(h.current().value.ui.candidates.every(row => row.description === ''));
+  assert.ok(activeConfig(h.current().value.ui).candidates.every(row => row.description === ''));
+  assert.deepEqual(h.current().value.ui.candidates, draftPool());
 });
 
 test('validation cannot change a confirmed triple, id, name or default even within scope', async testContext => {
@@ -419,6 +469,7 @@ test('manual edits and edit-then-save races invalidate generation baseline inste
 test('dirty readonly conflicts and unknown-write receipts protect manual work before generation', async testContext => {
   for (const prepare of [
     h => h.editor.edit(next => { next.candidates[0].name = 'dirty'; }),
+    h => h.editor.editPool(rows => { rows[0].name = 'dirty pool'; }),
     h => h.change({ writable: false }),
     h => h.change({ status: 'loading' }),
     h => { h.editor.conflicted = true; h.editor.publish(); },
@@ -574,7 +625,7 @@ test('gateway internal after actual commit requires explicit reload without repl
   await h.generator.generate(); h.generator.confirm(true);
   h.mutate = async row => { await mutate(row); h.catalog.invalidate(); return { ok: false, error: { code: 'gateway/internal', message: 'namespace disposed after mutate' } }; };
   assert.equal(await h.generator.validateAndApply(), false); assert.equal(h.editor.getSnapshot().receiptUnverified, true);
-  assert.equal(h.current().value.ui.candidates[0].id, 'scope-1');
+  assert.equal(activeConfig(h.current().value.ui).candidates[0].id, 'pool-low');
   assert.equal(await h.editor.save(), false); assert.equal(await h.generator.validateAndApply(), false);
   await h.editor.reload(); assert.equal(h.editor.getSnapshot().saved, true); assert.equal(h.mutations.length, 1);
 });
@@ -640,7 +691,7 @@ test('wizard exposes before/draft review fee warning immutable profiles and expl
   for (const language of ['en', 'zh']) {
     const translate = key => plugin.dictionaries[language][key] ?? key;
     const nodes = flatten(plugin.DraftWizard({ generator: h.generator, editor: h.editor, catalog: h.catalog, t: translate }));
-    for (const key of ['draftIntro','draftCost','draftBefore','draftAfter','draftConfirm','draftApply','draftReady']) assert.ok(nodes.includes(translate(key)), key);
+    for (const key of ['draftPresetIntro','draftCost','draftBefore','draftAfter','draftConfirmPreset','draftApply','draftReady']) assert.ok(nodes.includes(translate(key)), key);
     const review = flatten(nodes.find(row => row?.props?.['data-draft-review']));
     assert.equal(review.some(row => row?.type === 'table'), false);
     const cards = review.filter(row => row?.type === 'article');
@@ -657,11 +708,13 @@ test('wizard exposes before/draft review fee warning immutable profiles and expl
     assert.ok(nodes.some(row => row?.type === 'textarea' && row.props.maxLength === 8000));
     const apply = nodes.find(row => row?.type === 'button' && row.props.children.includes(translate('draftApply')));
     assert.equal(apply.props.disabled, true);
-    assert.equal(nodes.some(row => row?.type === 'input' && row.props.type !== 'search' && /provider|model|effort/.test(row.props['aria-label'] ?? '')), false);
+    const textInputs = nodes.filter(row => row?.type === 'input' && !['search', 'checkbox'].includes(row.props.type));
+    assert.deepEqual(textInputs.map(row => row.props['aria-label']), ['scope-1', 'scope-2'].map(id => translate('draftName') + ' · ' + id));
+    assert.ok(review.some(row => row?.type === 'input' && row.props.type === 'checkbox' && row.props['aria-label'] === translate('draftConfirmPreset')));
   }
   assert.equal(button(h, 'draftApply').props.disabled, true); h.generator.confirm(true); assert.equal(button(h, 'draftApply').props.disabled, false);
   const nodes = flatten(plugin.RouterPage(workspaceProps(h)));
   assert.ok(nodes.some(row => row?.props?.['data-autosave']));
-  assert.ok(flatten(workspacePanel(nodes, 'pool')).some(row => row?.type === 'button' && row.props.children.includes(t('addCandidate'))));
+  assert.ok(flatten(workspacePanel(nodes, 'pool')).some(row => row?.type === 'button' && row.props.children.includes(t('addPoolCandidate'))));
   assert.deepEqual(Object.keys(plugin.dictionaries.en).sort(), Object.keys(plugin.dictionaries.zh).sort());
 });

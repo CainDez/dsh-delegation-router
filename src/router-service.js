@@ -5,6 +5,7 @@ import { isAbsolute, join } from 'node:path';
 import { isVolatile } from '@deepseek-ai/cosmokit';
 import { LiveRouter } from './live-router.js';
 import { RouterConfig, compilePluginConfig } from './ui-config.js';
+import { readStoredDraftPool } from './config-sets.js';
 import { FileJournal } from './journal.js';
 import { fail, assertActive } from './errors.js';
 import { authorizationProjection, createAuthorizationReader, parentRouteSnapshot } from './authorization.js';
@@ -59,7 +60,7 @@ export class SubagentRouterService extends Service {
     this.policy=compiled.policy;this.auditFile=compiled.auditFile;
   }
 
-  configuration(source=this.configSource) {
+  readConfigSource(source=this.configSource) {
     const raw={};
     for(const key of Reflect.ownKeys(source??{})) {
       const descriptor=Object.getOwnPropertyDescriptor(source,key);
@@ -67,7 +68,11 @@ export class SubagentRouterService extends Service {
       const value=descriptor.value;
       Object.defineProperty(raw,key,{value:key==='ui'&&isVolatile(value)?value.get():value,enumerable:true});
     }
-    const compiled=compilePluginConfig(raw);
+    return raw;
+  }
+
+  configuration(source) {
+    const compiled=compilePluginConfig(this.readConfigSource(source));
     const auditFile=compiled.auditFile??this.defaultAuditFile;
     if(compiled.policy.enabled&&(typeof auditFile!=='string'||!isAbsolute(auditFile)))fail('AUDIT_PATH','Enabled routing requires an absolute auditFile or an available profileContext directory');
     return {...compiled,...(auditFile===undefined?{}:{auditFile})};
@@ -199,7 +204,7 @@ export class SubagentRouterService extends Service {
       }
     }), { when: rootWhen });
     // The browser settings RPC is optional; problems there must not take down routing.
-    try { await mountDraftRemote(this); }
+    try { await mountDraftRemote(this, { readScopePool: () => readStoredDraftPool(this.readConfigSource().ui) }); }
     catch { hostDiagnostic(this.ctx, 'SETTINGS_RPC_UNAVAILABLE', 'Could not mount configuration RPCs; delegation routing is unchanged.'); }
   }
 }

@@ -4,6 +4,7 @@ import { getEventListeners } from 'node:events';
 import { registerHooks } from 'node:module';
 import { DraftService, collectDraftText } from '../src/draft-service.js';
 import { draftDescriptors, invokeDraftRemote, mountDraftRemote } from '../src/draft-remote.js';
+import { readStoredDraftPool } from '../src/config-sets.js';
 
 const profile = (extra = {}) => ({ provider: 'worker-provider', model: 'worker', effort: 'low', ...extra });
 const request = (extra = {}) => ({ generator: profile({ provider: 'gen-provider', model: 'generator', effort: 'high' }), scope: [profile(), profile({ effort: 'high' })], requirements: 'Balanced daily work', ...extra });
@@ -17,7 +18,7 @@ const normalChunks = () => [block(generatedText()), finish()];
 const iterable = async function* (chunks) { yield* chunks; };
 const coded = code => error => { assert.ok(error instanceof Error); assert.equal(error.code, code); assert.equal(typeof error.message, 'string'); assert.ok(error.message.length); return true; };
 function deferred() { let resolve, reject; const promise = new Promise((res, rej) => { resolve = res; reject = rej; }); return { promise, resolve, reject }; }
-function harness({ resolve, prepare, chunks, stream, timeoutMs = 1000 } = {}) {
+function harness({ resolve, prepare, chunks, stream, readScopePool, timeoutMs = 1000 } = {}) {
   const calls = { metadata: [], prepare: [], stream: [], publicStream: 0, writes: 0 };
   const config = Object.freeze({ enabled: false, limits: Object.freeze({ maxActivePerModel: 3 }) });
   const llm = {
@@ -40,7 +41,7 @@ function harness({ resolve, prepare, chunks, stream, timeoutMs = 1000 } = {}) {
     save() { calls.writes++; assert.fail('Configuration must not be written'); },
     update() { calls.writes++; assert.fail('Configuration must not be written'); },
   };
-  return { calls, llm, service: new DraftService(llm, { timeoutMs }) };
+  return { calls, llm, service: new DraftService(llm, { timeoutMs, readScopePool }) };
 }
 function keepTimeoutAlive(t) {
   // Service timers are intentionally unref'ed; keep the test alive until assertions finish.
@@ -98,6 +99,49 @@ test('invalid generation/validation input fails before metadata, prepare or stre
     const { service, calls } = harness(); assert.throws(() => service.validateDraft(raw), coded('INVALID_DRAFT_REQUEST'));
     assert.equal(calls.metadata.length, 0); assert.equal(calls.prepare.length, 0); assert.equal(calls.stream.length, 0);
   }
+});
+
+const poolCandidate = (route, index) => ({ id: 'pool-' + index, name: 'Pool ' + index, ...route });
+const storedV5 = (scope = request().scope) => ({ schemaVersion: 5, enabled: true, activeConfigId: 'manual',
+  candidates: scope.map(poolCandidate), configs: [{ id: 'manual', name: 'Manual', defaultCandidateId: 'manual-profile',
+    candidates: [{ id: 'manual-profile', name: 'Private to preset', ...profile({ model: 'manual-only' }) }] }] });
+
+test('v5 draft scopes match only exact saved pool routes; the generator remains independent and results are not expanded', async () => {
+  const raw = storedV5(); const before = structuredClone(raw);
+  const { service, calls } = harness({ readScopePool: () => readStoredDraftPool(raw) });
+  const draft = await invokeDraftRemote(remoteHost(service), 'generateDraft', request());
+  assert.deepEqual(draft, { candidates: [candidate()], defaultCandidateId: 'scope-1', warnings: [] });
+  assert.deepEqual(await invokeDraftRemote(remoteHost(service), 'validateDraft', draftRequest()), { candidates: [candidate()], defaultCandidateId: 'scope-1' });
+  assert.equal(calls.prepare.length, 1); assert.equal(calls.writes, 0); assert.deepEqual(raw, before);
+  assert.equal(calls.prepare[0].options.model, 'generator');
+});
+
+test('pool-only scope rejects current-preset routes, individual effort drift, ambiguous duplicates and empty pool before any LLM work', async () => {
+  const blockedRemote = error => { assert.equal(error.code, 'delegation-router/draft'); assert.equal(error.data.code, 'DRAFT_SCOPE_NOT_IN_POOL'); return true; };
+  for (const [pool, scope] of [[request().scope, [profile({ model: 'manual-only' })]], [[profile({ effort: 'high' })], [profile()]],
+    [[profile(), profile()], [profile()]], [[], [profile()]]]) {
+    const { service, calls } = harness({ readScopePool: () => readStoredDraftPool(storedV5(pool)) });
+    await assert.rejects(invokeDraftRemote(remoteHost(service), 'generateDraft', request({ scope })), blockedRemote);
+    await assert.rejects(invokeDraftRemote(remoteHost(service), 'validateDraft', { ...draftRequest(), scope, candidates: [{ ...candidate(), ...scope[0] }] }), blockedRemote);
+    assert.deepEqual(calls, { metadata: [], prepare: [], stream: [], publicStream: 0, writes: 0 });
+  }
+});
+
+test('removing a scoped profile during asynchronous checks prevents preparation or accepting stale validation', async () => {
+  for (const [method, raw] of [['generateDraft', request()], ['validateDraft', draftRequest()]]) {
+    const source = storedV5(), entered = deferred(), release = deferred();
+    const { service, calls } = harness({ readScopePool: () => readStoredDraftPool(source),
+      resolve: async (provider, model) => { entered.resolve(); await release.promise; return metadata({ provider, model }); } });
+    const pending = service[method](raw), rejected = assert.rejects(pending, coded('DRAFT_SCOPE_NOT_IN_POOL'));
+    await entered.promise; source.candidates = []; release.resolve(); await rejected;
+    assert.equal(calls.prepare.length, 0); assert.equal(calls.writes, 0);
+  }
+  const source = storedV5(), entered = deferred(), release = deferred();
+  const { service, calls } = harness({ readScopePool: () => readStoredDraftPool(source),
+    stream: async function* () { entered.resolve(); await release.promise; yield* normalChunks(); } });
+  const pending = service.generateDraft(request()), rejected = assert.rejects(pending, coded('DRAFT_SCOPE_NOT_IN_POOL'));
+  await entered.promise; source.candidates = []; release.resolve(); await rejected;
+  assert.equal(calls.prepare.length, 1); assert.equal(calls.stream.length, 1); assert.equal(calls.writes, 0);
 });
 
 test('missing or failed metadata and unsupported scope profiles prevent any inference', async () => {

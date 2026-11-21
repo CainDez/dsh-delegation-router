@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Delegation execution profiles",
-    "description": "Generate drafts with AI or manually maintain complete execution profiles (provider / model / effort) and a default. Review and confirm generated drafts before applying; manual edits are autosaved. The main Agent still picks a fixed profile directly for delegation, without extra per-task selection calls or switching the main Agent. Host authorization always applies. Supports freely named role/default presets over one globally shared available model pool, enabled state and limits."
+    "description": "Generate drafts with AI or manually maintain complete execution profiles (provider / model / effort) and a default. Review and confirm generated drafts before applying; manual edits are autosaved. The main Agent still picks a fixed profile directly for delegation, without extra per-task selection calls or switching the main Agent. Host authorization always applies. Each preset has its own delegation models and default. The shared model pool applies only to draft generation."
   },
   "config": {
     "ui": "Delegation execution profile configuration (canonical ui entry; host authorization still applies)",

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeConfig } from '../src/config.js';
-import { normalizeConfigSets, compileStoredConfig } from '../src/config-sets.js';
+import { normalizeConfigSets, compileStoredConfig, readStoredDraftPool } from '../src/config-sets.js';
 
 const candidate = (id = 'fixed') => ({ id, name: 'Global ' + id, provider: 'provider-' + id, model: 'model-' + id, effort: null, description: 'Global description' });
 const policy = extra => ({ schemaVersion: 3, enabled: true, candidates: [candidate()], defaultCandidateId: 'fixed', ...extra });
@@ -61,6 +61,77 @@ test('absent storage and v3 remain compatible; v4 initializes global defaults an
   assert.throws(() => normalizeConfigSets(), { code: 'INVALID_CONFIG' });
   assert.throws(() => normalizeConfigSets(policy()), { code: 'INVALID_CONFIG' });
   assert.throws(() => normalizeConfig(raw), { code: 'INVALID_CONFIG' });
+});
+
+const fullEntry = (id = 'one', name = 'One', candidates = [candidate('fixed')], extra) => ({ id, name, candidates, ...extra });
+const independent = (configs = [fullEntry('one', 'One', [candidate()], { defaultCandidateId: 'fixed' })], candidates = [candidate('pool-only')]) =>
+  ({ schemaVersion: 5, enabled: true, candidates, activeConfigId: configs[0]?.id, configs });
+
+test('v5 compiles current full profiles independently of shared draft pool and sibling presets', () => {
+  const first = fullEntry('one', '  手动选择  ', [candidate('shared-id')], { defaultCandidateId: 'shared-id' });
+  const second = fullEntry('two', 'Two', [{ ...candidate('shared-id'), model: 'another-model', effort: 'high' }, candidate('only-two')], { defaultCandidateId: 'only-two' });
+  const raw = independent([first, second], [{ ...candidate('shared-id'), model: 'draft-only' }]);
+  const before = structuredClone(raw), normalized = normalizeConfigSets(raw);
+  frozen(normalized); assert.deepEqual(raw, before); assert.deepEqual(normalizeConfigSets(normalized), normalized);
+  assert.equal(normalized.configs[0].name, '手动选择');
+  assert.notEqual(normalized.configs[0].candidates[0], raw.configs[0].candidates[0]);
+  assert.notEqual(normalized.candidates[0], raw.candidates[0]);
+  assert.deepEqual(compileStoredConfig(raw), normalizeConfig({ schemaVersion: 3, enabled: true, candidates: first.candidates, defaultCandidateId: first.defaultCandidateId }));
+  assert.deepEqual(readStoredDraftPool(raw), raw.candidates);
+  raw.activeConfigId = 'two'; assert.deepEqual(compileStoredConfig(raw).candidates, second.candidates);
+  raw.candidates = []; assert.deepEqual(readStoredDraftPool(raw), []); assert.deepEqual(compileStoredConfig(raw).candidates, second.candidates);
+  delete raw.candidates; assert.deepEqual(readStoredDraftPool(raw), []); assert.deepEqual(compileStoredConfig(raw).candidates, second.candidates);
+});
+
+test('v5 requires a local default only for an enabled active preset; every supplied default must be local', () => {
+  const raw = independent([fullEntry('one', 'One', [candidate()], { defaultCandidateId: 'fixed' }), fullEntry('two', 'Two', [])]);
+  assert.deepEqual(normalizeConfigSets(raw).configs[1], fullEntry('two', 'Two', []));
+  raw.activeConfigId = 'two'; invalid(raw);
+  raw.enabled = false; assert.deepEqual(compileStoredConfig(raw).candidates, []);
+  assert.equal(Object.hasOwn(compileStoredConfig(raw), 'defaultCandidateId'), false);
+  raw.configs[1].candidates = [candidate('only-two')];
+  invalid({ ...raw, enabled: true });
+  for (const defaultCandidateId of [null, '', 'fixed', 'pool-only', 1]) {
+    raw.configs[1].defaultCandidateId = defaultCandidateId; invalid(raw);
+    raw.activeConfigId = 'one'; invalid(raw); raw.activeConfigId = 'two';
+  }
+  raw.configs[1].defaultCandidateId = 'only-two';
+  assert.equal(compileStoredConfig({ ...raw, enabled: true }).defaultCandidateId, 'only-two');
+});
+
+test('v5 forbids overrides and validates complete inactive profiles without evaluating getters', () => {
+  const raw = () => independent([fullEntry('one', 'One', [candidate()], { defaultCandidateId: 'fixed' }), fullEntry('two', 'Two', [candidate('other')])]);
+  for (const key of ['overrides', 'policy', 'limits', 'enabled', 'provider', 'model', 'effort']) {
+    const value = raw(); value.configs[1][key] = undefined; invalid(value);
+  }
+  for (const candidates of [undefined, null, {}, Array(1), [candidate(), candidate()], [{ ...candidate(), effort: 'default' }], [{ ...candidate(), effort: undefined }], [{ ...candidate(), model: undefined }]]) {
+    const value = raw(); value.configs[1].candidates = candidates; invalid(value);
+  }
+  const omitted = raw(); delete omitted.configs[1].candidates; invalid(omitted);
+  let reads = 0; const accessor = raw();
+  Object.defineProperty(accessor.configs[1].candidates[0], 'model', { enumerable: true, get() { reads++; return 'not read'; } });
+  invalid(accessor); assert.throws(() => readStoredDraftPool(accessor), { code: 'INVALID_CONFIG' }); assert.equal(reads, 0);
+});
+
+test('v5 permits 32 separate 128-profile presets and an independent 128-profile pool', () => {
+  const candidates = Array.from({ length: 128 }, (_, index) => candidate('candidate-' + index));
+  const configs = Array.from({ length: 32 }, (_, index) => fullEntry('preset-' + index, 'Preset ' + index,
+    candidates.map(profile => ({ ...profile, name: 'Label ' + index + ' ' + profile.id })), { defaultCandidateId: candidates[index].id }));
+  const raw = independent(configs, candidates); raw.activeConfigId = 'preset-31';
+  const normalized = normalizeConfigSets(raw);
+  assert.equal(normalized.configs.length, 32); assert.equal(normalized.candidates.length, 128);
+  assert.deepEqual(compileStoredConfig(raw).candidates, configs[31].candidates);
+  configs[0].candidates.push(candidate('excess')); invalid(raw);
+});
+
+test('draft pool reads retain strict v4 and unrestricted legacy v3 behavior without rewriting input', () => {
+  assert.equal(readStoredDraftPool(undefined), undefined);
+  assert.equal(readStoredDraftPool(policy()), undefined);
+  const raw = sets([entry('one', 'One', { overrides: [{ id: 'fixed', name: 'Preset only' }] })]);
+  const before = structuredClone(raw);
+  assert.deepEqual(readStoredDraftPool(raw), before.candidates); assert.deepEqual(raw, before);
+  assert.throws(() => readStoredDraftPool({ schemaVersion: 3, candidates: [{ ...candidate(), effort: 'default' }] }), { code: 'INVALID_CONFIG' });
+  assert.throws(() => readStoredDraftPool({ ...raw, configs: [{ ...raw.configs[0], candidates: [] }] }), { code: 'INVALID_CONFIG' });
 });
 
 test('configuration list requires 1–32 entries and an exact active id without fallback', () => {

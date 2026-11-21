@@ -127,7 +127,8 @@ test('catalog refresh control shows loading, successful counts and adjacent fail
   const root = plugin.RouterPage({editor,catalog,t,view:'page'});
   assert.ok(flatten(root).find(node => node?.props?.['data-model-catalog']));
   const manual = flatten(root).find(node => node?.props?.['data-manual-editor']);
-  assert.equal(manual.type, 'details'); assert.equal(!!manual.props.open, false);
+  assert.equal(manual.type, 'div');
+  assert.ok(flatten(manual).some(node => node?.type === 'details' && node.props['data-candidate'] && !node.props.open));
   assert.equal(h.mutations.length, 0); editor.dispose(); catalog.dispose();
 });
 
@@ -267,7 +268,7 @@ test('verified absent or empty reasoning supports null and never changes an exis
     const nodes = page(editor, catalog), picker = field(nodes, 'select', 'effort');
     assert.ok(nodes.includes(t('noReasoning')));
     assert.deepEqual(flatten(picker).filter(node => node?.type === 'option').map(node => node.props.value), ['', 'null']);
-    assert.equal(await editor.save(), true); assert.equal(h.mutations[0].ops[0].value.candidates[0].effort, null);
+    assert.equal(await editor.save(), true); assert.equal(h.mutations[0].ops[0].value.configs[0].candidates[0].effort, null);
     editor.dispose(); catalog.dispose();
   }
 });
@@ -332,7 +333,7 @@ test('catalog failure does not block candidate management, saving or raw CAS', a
   editor.edit(next => { next.candidates[0].description = 'Edit despite offline catalog'; });
   assert.equal(await editor.save(), true); assert.equal(h.mutations.length, 1); assert.equal(h.mutations[0].revision, 9);
   assert.deepEqual(h.mutations[0].ops.map(op => [op.op, op.path]), [['set', ['ui']]]);
-  assert.equal(h.mutations[0].ops[0].value.candidates[0].description, 'Edit despite offline catalog'); assert.equal(h.mutations[0].ops[0].value.candidates[0].effort, 'thorough');
+  assert.equal(h.mutations[0].ops[0].value.configs[0].candidates[0].description, 'Edit despite offline catalog'); assert.equal(h.mutations[0].ops[0].value.configs[0].candidates[0].effort, 'thorough');
   assert.equal(editor.getSnapshot().saved, true); assert.equal(editor.getSnapshot().conflicted, false); editor.dispose(); catalog.dispose();
 });
 

@@ -35,7 +35,7 @@ export function draftDescriptors() {
 }
 
 /** Optional settings RPC face; CLI/headless routing continues without a gateway. */
-export async function mountDraftRemote(service) {
+export async function mountDraftRemote(service, { readScopePool } = {}) {
   const registry = service.ctx.get('typert');
   if (!registry) return;
   if (typeof registry.register !== 'function') throw Error('Settings RPC registry is incompatible');
@@ -58,7 +58,7 @@ export async function mountDraftRemote(service) {
     service.ctx.effect(() => () => { for (const controller of requests) controller.abort(); requests.clear(); }, 'delegationRouter.catalog');
   }
   if (draft) {
-    const drafts = service.draftService = new DraftService(llm);
+    const drafts = service.draftService = new DraftService(llm, { readScopePool });
     service.ctx.effect(() => () => drafts.close(), 'delegationRouter.draft-generation');
   }
 }

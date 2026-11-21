@@ -24,6 +24,13 @@ const fixedCandidates = () => [
 ];
 const stored = extra => ({ ...copy(plugin.emptyDraft()), candidates: fixedCandidates(), defaultCandidateId: 'fast', ...extra });
 const seed = editor => editor.edit(next => Object.assign(next, copy(stored())));
+// Independent wire fixture: the editor's v3 projection is not the persisted document.
+const wire = (draft, pool = fixedCandidates()) => ({
+  schemaVersion: 5, enabled: draft.enabled, candidates: copy(pool),
+  ...(draft.limits === undefined ? {} : { limits: copy(draft.limits) }), activeConfigId: 'config-1',
+  configs: [{ id: 'config-1', name: t('initialConfig'), candidates: copy(draft.candidates),
+    ...(draft.defaultCandidateId === undefined ? {} : { defaultCandidateId: draft.defaultCandidateId }) }]
+});
 function host(options = {}) {
   let snapshot = { status: 'ready', writable: true, revision: 2, value: { ui: stored() }, user: {}, ...options };
   const subscribers = new Set(); const events = new Map(); const mutations = []; const disposers = [], registrations = [], dictionaries = [];
@@ -81,6 +88,7 @@ test('save sends one set-ui transaction and fixed revision, then waits for mirro
   const h = host(); seed(h.editor); assert.equal(await h.editor.save(), true);
   assert.equal(h.mutations.length, 1); assert.equal(h.mutations[0].ns, 'delegation-router'); assert.equal(h.mutations[0].revision, 2);
   assert.deepEqual(h.mutations[0].ops.map(row => [row.op, row.path]), [['set', ['ui']]]);
+  assert.deepEqual(h.mutations[0].ops[0].value, wire(stored()));
   assert.equal(h.loads(), 1); assert.equal(h.editor.getSnapshot().saved, true); assert.equal(h.editor.getSnapshot().dirty, false);
   h.dispose();
 });
@@ -159,11 +167,12 @@ test('late save settlement after dispose cannot publish or mutate another profil
 test('schema-default-filled effective settings acknowledge the exact raw user write', async () => {
   const h = host(); seed(h.editor);
   h.editor.edit(draft => { delete draft.candidates[0].description; delete draft.limits; });
-  const desired = copy(h.editor.getSnapshot().draft);
-  h.ctx.remote.settings.mutate = async () => {
+  const desired = wire(h.editor.getSnapshot().draft);
+  h.ctx.remote.settings.mutate = async (_ns, ops) => {
+    assert.deepEqual(copy(ops[0].value), desired);
     // Independent Host-schema fixture, not the function under test.
     const effective = copy(desired);
-    effective.candidates[0].description = '';
+    effective.configs[0].candidates[0].description = '';
     effective.limits = { maxPendingStarts: 32, maxActivePerModel: 8, maxCreationsPerParent: 64, metadataTimeoutMs: 5000 };
     h.queue({ status: 'ready', writable: true, revision: 3, user: { ui: desired }, value: { ui: effective } });
     return { ok: true, value: { revision: 3 } };
@@ -175,15 +184,16 @@ test('higher-layer effective overrides are saved but not live', async () => {
   for (const override of [
     value => { value.ui.enabled = true; },
     value => { value.ui.schemaVersion = 2; },
-    value => { value.ui.candidates.push({ id: 'higher-candidate' }); },
+    value => { value.ui.configs[0].candidates.push({ id: 'higher-candidate' }); },
+    value => { value.ui.configs[0].candidates[0].effort = 'high'; },
+    value => { value.ui.configs[0].candidates[0].extra = []; },
     value => { value.ui.candidates[0].effort = 'high'; },
-    value => { value.ui.candidates[0].extra = []; },
     value => { value.ui.extra = false; }
   ]) {
     const h = host(); seed(h.editor); const desired = copy(h.editor.getSnapshot().draft);
     h.ctx.remote.settings.mutate = async () => {
-      const value = { ui: copy(desired) }; override(value);
-      h.queue({ status: 'ready', writable: true, revision: 3, user: { ui: desired }, value });
+      const raw = wire(desired), value = { ui: copy(raw) }; override(value);
+      h.queue({ status: 'ready', writable: true, revision: 3, user: { ui: raw }, value });
       return { ok: true, value: { revision: 3 } };
     };
     assert.equal(await h.editor.save(), false); const state = h.editor.getSnapshot();
@@ -206,7 +216,7 @@ test('failed reload retains draft and uncertain write fence until raw and effect
   assert.equal(await h.editor.save(), false); assert.equal(h.mutations.length, 1);
   h.editor.mirror.load = load;
   await h.editor.reload(); assert.equal(h.editor.getSnapshot().receiptUnverified, true); // A stale ready mirror is not evidence.
-  h.queue({ status: 'ready', writable: true, revision: 3, user: { ui: desired }, value: { ui: desired } });
+  h.queue({ status: 'ready', writable: true, revision: 3, user: { ui: wire(desired) }, value: { ui: wire(desired) } });
   await h.editor.reload(); assert.equal(h.editor.getSnapshot().receiptUnverified, false); assert.equal(h.editor.getSnapshot().saved, true); h.dispose();
 });
 
@@ -247,7 +257,7 @@ test('unknown outer fields and invalid audit values remain readonly and cannot f
     assert.deepEqual(copy(blocked.editor.getSnapshot().invalidOriginal), original);
     assert.equal(blocked.editor.edit(next => { next.enabled = true; }), false);
     assert.equal(await blocked.editor.save(), false); assert.equal(blocked.mutations.length, 0); blocked.dispose();
-    const h = host(); seed(h.editor); const desired = copy(h.editor.getSnapshot().draft);
+    const h = host(); seed(h.editor); const desired = wire(h.editor.getSnapshot().draft);
     h.ctx.remote.settings.mutate = async () => {
       h.mutations.push({}); h.queue({ status: 'ready', writable: true, revision: 3,
         user: { ui: desired }, value: { ui: desired, ...extra } }); return { ok: true };
@@ -258,7 +268,7 @@ test('unknown outer fields and invalid audit values remain readonly and cannot f
 });
 
 test('canonical save requires exact raw acknowledgement with exact persisted fields', async () => {
-  const h = host(); seed(h.editor); const desired = copy(h.editor.getSnapshot().draft);
+  const h = host(); seed(h.editor); const desired = wire(h.editor.getSnapshot().draft);
   h.ctx.remote.settings.mutate = async () => {
     h.mutations.push({}); const raw = { ...copy(desired), extraSourceField: 'higher layer' };
     h.queue({ status: 'ready', writable: true, revision: 3, user: { ui: raw }, value: { ui: desired } });
@@ -382,7 +392,7 @@ test('explicit empty and fixed candidates and default selections are preserved',
     const h = host({ value: { ui: raw } }), draft = h.editor.getSnapshot().draft;
     assert.deepEqual(copy(draft.candidates), raw.candidates); assert.equal(draft.defaultCandidateId, raw.defaultCandidateId);
     assert.equal(h.editor.getSnapshot().dirty, false);
-    assert.deepEqual(copy(plugin.normalizeAckUi(raw).candidates), raw.candidates); assert.equal(plugin.normalizeAckUi(raw).defaultCandidateId, raw.defaultCandidateId);
+    assert.deepEqual(copy(h.editor.getSnapshot().configSet.candidates), raw.candidates);
     assert.equal(h.mutations.length, 0); h.dispose();
   }
 });
@@ -395,19 +405,21 @@ test('invalid sources never become editable drafts', () => {
   }
 });
 
-test('normalizeAckUi preserves invalid sources instead of fabricating v3 defaults', () => {
+test('normalizeAckUi preserves invalid sources and does not treat legacy sources as v5 receipts', () => {
   assert.deepEqual(copy(plugin.normalizeAckUi({})), {});
   assert.deepEqual(copy(plugin.normalizeAckUi({ schemaVersion: 0 })), { schemaVersion: 0 });
   assert.deepEqual(copy(plugin.normalizeAckUi({ schemaVersion: 3, candidates: [], extra: true })), { schemaVersion: 3, candidates: [], extra: true });
   assert.equal(plugin.normalizeAckUi(null), null);
   const legitimate = { schemaVersion: 3, enabled: false, candidates: [{ id: 'fast', name: 'Fast', provider: 'p', model: 'm', effort: 'low' }] };
-  assert.deepEqual(copy(plugin.normalizeAckUi(legitimate)), { ...copy(plugin.emptyDraft()), candidates: [{ ...legitimate.candidates[0], description: '' }] });
+  assert.notEqual(plugin.normalizeAckUi(legitimate).schemaVersion, 5);
+  const malformedV5 = { ...wire(stored()), configs: [{ id: 'config-1', name: t('initialConfig'), overrides: [] }] };
+  assert.deepEqual(copy(plugin.normalizeAckUi(malformedV5)), malformedV5);
 });
 
-test('an empty effective ui:{} never acknowledges a saved empty v3 draft as live', async () => {
+test('an empty effective ui:{} never acknowledges an empty v5 write as live', async () => {
   const h = host({ value: {} });
   h.editor.edit(next => { next.limits.maxPendingStarts = 16; });
-  const desired = copy(h.editor.getSnapshot().draft);
+  const desired = wire(h.editor.getSnapshot().draft, []);
   h.ctx.remote.settings.mutate = async (ns, ops, revision) => {
     h.mutations.push({ ns, ops: copy(ops), revision });
     h.queue({ status: 'ready', writable: true, revision: 3, user: { ui: desired }, value: { ui: {} } });
@@ -450,17 +462,17 @@ test('draft validation enforces exact fixed candidates without inherited sources
 test('fixed candidate drafts persist exactly across CAS and effective-route verification', async () => {
   for (const changed of [false, true]) {
     const h = host({ value: {} }); h.editor.edit(next => { next.candidates = fixedCandidates(); next.defaultCandidateId = 'fast'; });
-    const desired = copy(h.editor.getSnapshot().draft);
+    const desired = wire(h.editor.getSnapshot().draft, []);
     h.ctx.remote.settings.mutate = async (ns, ops, revision) => {
       h.mutations.push({ ns, ops: copy(ops), revision }); const effective = copy(desired);
-      if (changed) effective.candidates[0].effort = 'higher-layer';
+      if (changed) effective.configs[0].candidates[0].effort = 'higher-layer';
       h.queue({ status: 'ready', writable: true, revision: 3, user: { ui: desired }, value: { ui: effective } });
       return { ok: true };
     };
     assert.equal(await h.editor.save(), !changed); assert.equal(h.mutations.length, 1); assert.equal(h.mutations[0].revision, 2);
     assert.deepEqual(h.mutations[0].ops[0].value, desired);
     assert.equal(h.editor.getSnapshot().savedButNotLive, changed);
-    assert.ok(h.mutations[0].ops[0].value.candidates.every(candidate => typeof candidate.provider === 'string' && typeof candidate.model === 'string'));
+    assert.ok(h.mutations[0].ops[0].value.configs[0].candidates.every(candidate => typeof candidate.provider === 'string' && typeof candidate.model === 'string'));
     h.dispose();
   }
 });

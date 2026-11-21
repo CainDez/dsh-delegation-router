@@ -4,11 +4,25 @@ const serviceErrors = new WeakSet();
 const failure = (code, message) => { const error = Object.assign(new Error(message), { code }); serviceErrors.add(error); return error; };
 export const isDraftServiceError = error => error !== null && typeof error === 'object' && serviceErrors.has(error);
 const routeOf = ({ provider, model, effort }) => ({ provider, model, ...(effort === null ? {} : { reasoningEffort: effort }) });
+const profileKey = ({ provider, model, effort }) => JSON.stringify([provider, model, effort]);
 
 /** One-shot settings assistant. No sessions, tools, settings writes, retries or fallback. */
 export class DraftService {
-  constructor(llm, { timeoutMs = 120000 } = {}) {
-    this.llm = llm; this.timeoutMs = timeoutMs; this.active = new Set(); this.closed = false;
+  constructor(llm, { timeoutMs = 120000, readScopePool } = {}) {
+    this.llm = llm; this.timeoutMs = timeoutMs; this.readScopePool = readScopePool; this.active = new Set(); this.closed = false;
+  }
+  assertScopeInPool(scope) {
+    const pool = this.readScopePool?.();
+    // Unnamed v3 (and absent settings) retain their original catalog-only scope.
+    if (pool === undefined) return;
+    const counts = new Map();
+    for (const entry of pool) {
+      const key = profileKey(entry);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    if (scope.some(entry => counts.get(profileKey(entry)) !== 1)) {
+      throw failure('DRAFT_SCOPE_NOT_IN_POOL', 'Every scope profile must match exactly one entry in the saved draft pool. Refresh the scope or edit the pool before retrying.');
+    }
   }
   async run(operation, parentSignal) {
     if (this.closed) throw failure('GENERATOR_CLOSED', 'Configuration generator has been disposed.');
@@ -36,8 +50,10 @@ export class DraftService {
   generateDraft(raw, signal) {
     const request = normalizeGenerationRequest(raw);
     return this.run(async signal => {
+      this.assertScopeInPool(request.scope);
       await validateProfiles([request.generator, ...request.scope], (p, m, s) => this.llm.resolveModelInfo(p, m, s), signal);
       signal.throwIfAborted();
+      this.assertScopeInPool(request.scope);
       const route = routeOf(request.generator);
       const call = await this.llm.prepareCall({ ...route, maxTokens: 8192 }, signal);
       signal.throwIfAborted();
@@ -54,14 +70,17 @@ export class DraftService {
       // Reject catalog drift during generation, rather than quietly changing effort.
       await validateProfiles(request.scope, (p, m, s) => this.llm.resolveModelInfo(p, m, s), signal);
       signal.throwIfAborted();
+      this.assertScopeInPool(request.scope);
       return draft;
     }, signal);
   }
   validateDraft(raw, signal) {
     const draft = validateDraftRequest(raw);
     return this.run(async signal => {
+      this.assertScopeInPool(draft.scope);
       await validateProfiles(draft.scope, (p, m, s) => this.llm.resolveModelInfo(p, m, s), signal);
       signal.throwIfAborted();
+      this.assertScopeInPool(draft.scope);
       return { candidates: draft.candidates, defaultCandidateId: draft.defaultCandidateId };
     }, signal);
   }

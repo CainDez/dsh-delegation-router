@@ -11,7 +11,8 @@ const plugin = definition.factory(() => React);
 const copy = value => JSON.parse(JSON.stringify(value));
 const t = key => plugin.dictionaries.en[key] ?? key;
 const policy = (model = 'one') => ({ ...copy(plugin.emptyDraft()), enabled: true, candidates: [{ id: 'same-id', name: model, provider: 'p', model, effort: null }], defaultCandidateId: 'same-id' });
-const collection = () => ({ schemaVersion: 4, enabled: true, candidates: policy().candidates, limits: copy(plugin.emptyDraft().limits), activeConfigId: 'a', configs: [{ id: 'a', name: 'My own name', defaultCandidateId: 'same-id', overrides: [] }, { id: 'b', name: '另一套任意名称', defaultCandidateId: 'same-id', overrides: [{ id: 'same-id', name: 'two', description: 'B role' }] }] });
+const legacyCollection = () => ({ schemaVersion: 4, enabled: true, candidates: policy().candidates, limits: copy(plugin.emptyDraft().limits), activeConfigId: 'a', configs: [{ id: 'a', name: 'My own name', defaultCandidateId: 'same-id', overrides: [] }, { id: 'b', name: '另一套任意名称', defaultCandidateId: 'same-id', overrides: [{ id: 'same-id', name: 'two', description: 'B role' }] }] });
+const collection = () => copy(plugin.configSetFrom({ ui: legacyCollection() }, t('initialConfig')));
 function harness(context, ui = collection()) {
   let snapshot = { status: 'ready', writable: true, revision: 1, user: { ui: copy(ui), auditFile: 'D:/keep.jsonl' }, value: { ui: copy(ui), auditFile: 'D:/keep.jsonl' } };
   const listeners = new Set(), timers = new Map(); let tick = 0;
@@ -31,18 +32,23 @@ function flatten(node) {
   return [node, ...flatten(node.props?.children)];
 }
 
-test('v4 reads the active policy without writes; v3 stays unchanged until an explicit collection action', async context => {
-  const h = harness(context);
+test('v3/v4 read without writes and first user save materializes isolated v5 presets', async context => {
+  const h = harness(context, legacyCollection());
   assert.equal(h.editor.getSnapshot().draft.candidates[0].model, 'one');
   assert.equal(h.editor.getSnapshot().configSet.configs.length, 2);
   assert.equal(h.mutations.length, 0); assert.equal(h.timers.size, 0);
+  assert.equal(await h.editor.renameConfig('Migrated'), true);
+  const migrated = h.snapshot().user.ui;
+  assert.equal(migrated.schemaVersion, 5);
+  assert.deepEqual(migrated.candidates, legacyCollection().candidates);
+  assert.equal(migrated.configs[1].candidates[0].description, 'B role');
   const old = harness(context, policy());
   old.editor.edit(next => { next.limits.maxActivePerModel = 2; });
   assert.equal(await old.editor.save(), true);
-  assert.equal(old.mutations[0].ops[0].value.schemaVersion, 3);
+  assert.equal(old.mutations[0].ops[0].value.schemaVersion, 5);
   assert.equal(await old.editor.renameConfig('用户自行命名'), true);
   const saved = old.mutations[1].ops[0].value;
-  assert.equal(saved.schemaVersion, 4); assert.equal(saved.configs[0].name, '用户自行命名');
+  assert.equal(saved.schemaVersion, 5); assert.equal(saved.configs[0].name, '用户自行命名');
   assert.equal(saved.limits.maxActivePerModel, 2);
   assert.equal(old.snapshot().value.auditFile, 'D:/keep.jsonl');
 });
@@ -56,15 +62,16 @@ test('new/copy presets preserve one global pool, enabled state and limits; roles
   assert.equal(saved.configs[1].defaultCandidateId, 'same-id');
   h.editor.edit(next => { next.candidates[0].description = 'Only copied preset'; next.candidates[0].model = 'changed'; next.limits.maxActivePerModel = 4; });
   assert.equal(await h.editor.save(), true);
-  assert.equal(h.snapshot().user.ui.candidates[0].model, 'changed');
+  assert.equal(h.snapshot().user.ui.candidates[0].model, 'one');
+  assert.equal(h.snapshot().user.ui.configs[1].candidates[0].model, 'changed');
   assert.equal(h.snapshot().user.ui.limits.maxActivePerModel, 4);
   assert.equal(await h.editor.switchConfig('config-1'), true);
-  assert.equal(h.editor.getSnapshot().draft.candidates[0].model, 'changed');
+  assert.equal(h.editor.getSnapshot().draft.candidates[0].model, 'one');
   assert.equal(h.editor.getSnapshot().draft.candidates[0].description ?? '', '');
   assert.equal(await h.editor.createConfig('Empty roles'), true);
   saved = h.snapshot().user.ui;
   assert.equal(saved.configs.length, 3);
-  assert.equal(saved.enabled, true); assert.equal(saved.candidates[0].model, 'changed');
+  assert.equal(saved.enabled, true); assert.equal(saved.candidates[0].model, 'one');
   assert.equal(h.editor.getSnapshot().draft.candidates[0].description ?? '', '');
   assert.equal(saved.configs[2].defaultCandidateId, 'same-id');
   assert.equal(saved.limits.maxActivePerModel, 4);
@@ -80,7 +87,7 @@ test('switch persists one CAS transaction and edits affect only the selected con
   h.editor.edit(next => { next.candidates[0].name = 'Changed name'; });
   await h.editor.save();
   assert.equal(h.snapshot().user.ui.candidates[0].name, 'one');
-  assert.equal(h.snapshot().user.ui.configs[1].overrides[0].name, 'Changed name');
+  assert.equal(h.snapshot().user.ui.configs[1].candidates[0].name, 'Changed name');
   assert.equal(await h.editor.switchConfig('a'), true);
   assert.equal(compileStoredConfig(h.snapshot().user.ui).candidates[0].model, 'one');
   assert.equal(h.snapshot().value.auditFile, 'D:/keep.jsonl');
@@ -107,7 +114,7 @@ test('name validation, case-insensitive duplicates and 32 configuration cap matc
   }
   assert.equal(await h.editor.renameConfig('另一套任意名称'), false);
   assert.equal(h.mutations.length, 0);
-  const ui = collection(); ui.configs = Array.from({ length: 32 }, (_, index) => ({ id: 'c' + index, name: 'Name ' + index, defaultCandidateId: 'same-id', overrides: [] })); ui.activeConfigId = 'c0';
+  const ui = collection(); ui.configs = Array.from({ length: 32 }, (_, index) => ({ id: 'c' + index, name: 'Name ' + index, defaultCandidateId: 'same-id', candidates: policy().candidates })); ui.activeConfigId = 'c0';
   const full = harness(context, ui);
   assert.equal(await full.editor.createConfig('33rd'), false);
   assert.equal(full.mutations.length, 0);
@@ -151,7 +158,7 @@ test('unknown write and effective override retain full-collection acknowledgemen
 });
 
 test('malformed inactive policy or collection stays readonly and cannot overwrite source', async context => {
-  for (const change of [ui => { ui.activeConfigId = 'missing'; }, ui => { ui.configs[1].overrides[0].model = 'forbidden'; }, ui => { ui.configs[1].name = 'MY OWN NAME'; }, ui => { ui.configs[0].extra = true; }, ui => { ui.configs = []; }, ui => { ui.configs[1].policy = { schemaVersion: 4 }; }]) {
+  for (const change of [ui => { ui.activeConfigId = 'missing'; }, ui => { ui.configs[1].candidates[0].model = ''; }, ui => { ui.configs[1].name = 'MY OWN NAME'; }, ui => { ui.configs[0].extra = true; }, ui => { ui.configs = []; }, ui => { ui.configs[1].policy = { schemaVersion: 4 }; }]) {
     const ui = collection(); change(ui); const h = harness(context, ui);
     assert.equal(h.editor.getSnapshot().invalidSource, true);
     assert.equal(await h.editor.renameConfig('Must not overwrite'), false);
@@ -168,9 +175,9 @@ test('generated draft changes only current policy and becomes stale after switch
   gen.setScope([{ provider: 'p', model: 'one', effort: null }]); gen.setRequirements('User defined config requirements.');
   assert.equal(await gen.generate(), true); gen.confirm(true);
   assert.equal(await gen.validateAndApply(), true);
-  assert.equal(h.snapshot().user.ui.configs[0].overrides[0].id, 'same-id');
+  assert.equal(h.snapshot().user.ui.configs[0].candidates[0].id, 'same-id');
   assert.equal(h.snapshot().user.ui.candidates[0].id, 'same-id');
-  assert.equal(h.snapshot().user.ui.configs[1].overrides[0].name, 'two');
+  assert.equal(h.snapshot().user.ui.configs[1].candidates[0].name, 'two');
   assert.equal(await gen.generate(), true); gen.confirm(true);
   const oldWizard = flatten(plugin.DraftWizard({ generator: gen, editor: h.editor, catalog, t }));
   assert.equal(await h.editor.switchConfig('b'), true);
@@ -187,7 +194,22 @@ test('generated draft changes only current policy and becomes stale after switch
   oldWizard.find(row => row?.type === 'button' && row.props.children.includes(t('draftRemove'))).props.onClick();
   assert.equal(h.mutations.length, count);
   assert.deepEqual(copy(gen.getSnapshot().draft), freshDraft);
-  assert.equal(h.snapshot().user.ui.configs[1].overrides[0].name, 'two');
+  assert.equal(h.snapshot().user.ui.configs[1].candidates[0].name, 'two');
+});
+
+test('draft review lists the removed alias even when it points to the same model and effort', async context => {
+  const ui = collection();
+  ui.configs[0].candidates.push({ ...ui.configs[0].candidates[0], id: 'duplicate-route', name: 'Manual alias' });
+  const h = harness(context, ui);
+  const catalogState = { status: 'ready', groups: [{ id: 'p', models: [{ id: 'one' }] }], failures: [] };
+  const catalog = { getSnapshot: () => catalogState, subscribe: () => () => {}, find: () => ({ id: 'one' }) };
+  const gen = new plugin.DraftGenerator(h.ctx, h.editor, catalog, t); context.after(() => gen.dispose());
+  gen.selectGenerator(plugin.modelKey({ provider: 'p', model: 'one' }));
+  gen.setScope([{ provider: 'p', model: 'one', effort: null }]); gen.setRequirements('Assign the single allowed profile.');
+  assert.equal(await gen.generate(), true);
+  const review = flatten(plugin.DraftWizard({ generator: gen, editor: h.editor, catalog, t }));
+  assert.ok(review.includes(t('draftRemovedRoutes') + ' · 1'));
+  assert.ok(review.some(text => typeof text === 'string' && text.startsWith('Manual alias · ')));
 });
 
 test('silent host updates fence stale rename/copy actions instead of retargeting another current set', async context => {
@@ -202,7 +224,7 @@ test('silent host updates fence stale rename/copy actions instead of retargeting
 test('active-policy equality alone cannot acknowledge omitted or altered inactive configurations', async context => {
   const h = harness(context);
   h.mutate = async (_ns, ops, revision) => {
-    const actual = copy(ops[0].value); actual.configs[1].overrides[0].description = 'Unexpected inactive change';
+    const actual = copy(ops[0].value); actual.configs[1].candidates[0].description = 'Unexpected inactive change';
     h.change({ revision: revision + 1, user: { ui: actual }, value: { ui: actual } }); return { ok: true };
   };
   assert.equal(await h.editor.renameConfig('Rename'), false);
@@ -210,13 +232,14 @@ test('active-policy equality alone cannot acknowledge omitted or altered inactiv
   assert.equal(await h.editor.save(), false); assert.equal(h.mutations.length, 1);
 });
 
-test('normalized effective v4 defaults acknowledge only the matching full raw write', async context => {
-  const ui = collection(); delete ui.limits; delete ui.configs[1].overrides;
+test('normalized effective v5 defaults acknowledge only the matching full raw write', async context => {
+  const ui = collection(); delete ui.limits;
   const h = harness(context, ui);
   h.mutate = async (_ns, ops, revision) => {
     const raw = copy(ops[0].value), effective = copy(raw);
     effective.enabled ??= false; effective.limits = { ...copy(plugin.emptyDraft().limits), ...effective.limits };
-    effective.configs = effective.configs.map(row => ({ ...row, overrides: row.overrides ?? [] }));
+    effective.candidates = effective.candidates.map(row => ({ description: '', ...row }));
+    effective.configs = effective.configs.map(row => ({ ...row, candidates: row.candidates.map(candidate => ({ description: '', ...candidate })) }));
     h.change({ revision: revision + 1, user: { ui: raw }, value: { ui: effective } }); return { ok: true };
   };
   assert.equal(await h.editor.renameConfig('Still active'), true);
@@ -224,12 +247,12 @@ test('normalized effective v4 defaults acknowledge only the matching full raw wr
 });
 
 test('receipt comparison distinguishes inherited preset descriptions from explicit clears', async context => {
-  const ui = collection(); ui.candidates[0].description = 'Inherited global description';
+  const ui = legacyCollection(); ui.candidates[0].description = 'Inherited global description';
   ui.configs[1].overrides = [{ id: 'same-id', name: 'Role B' }];
   const h = harness(context, ui);
   h.mutate = async (_ns, ops, revision) => {
     const raw = copy(ops[0].value), effective = copy(raw);
-    effective.configs[1].overrides[0].description = '';
+    effective.configs[1].candidates[0].description = '';
     h.change({ revision: revision + 1, user: { ui: raw }, value: { ui: effective } }); return { ok: true };
   };
   assert.equal(await h.editor.renameConfig('Renamed'), false);
@@ -263,7 +286,7 @@ test('old rendered manual fields, IME, catalog, delete and add callbacks cannot 
     nodes => nodes.find(row => row?.type === 'button' && row.props.children.includes(t('addCandidate'))).props.onClick()
   ];
   for (const aba of [false, true]) for (const invoke of cases) {
-    const ui = collection(); ui.configs[1].overrides = [];
+    const ui = collection(); ui.configs[1].candidates = policy().candidates;
     const h = harness(context, ui), catalog = new plugin.ModelCatalog(h.ctx); context.after(() => catalog.dispose());
     catalog.publish({ status: 'ready', groups: [{ id: 'p', name: 'P', models: [{ id: 'one' }, { id: 'two' }] }], failures: [] });
     const old = flatten(plugin.RouterPage({ editor: h.editor, catalog, t }));
@@ -327,39 +350,41 @@ test('switch/copy/new/rename/delete only touch preset data and never available m
   await h.editor.createConfig('Blank roles'); check();
   await h.editor.renameConfig('Renamed roles'); check();
   await h.editor.deleteConfig('b', true); check();
-  for (const preset of h.snapshot().user.ui.configs) assert.deepEqual(Object.keys(preset).sort(), ['defaultCandidateId', 'id', 'name', 'overrides']);
+  for (const preset of h.snapshot().user.ui.configs) assert.deepEqual(Object.keys(preset).sort(), ['candidates', 'defaultCandidateId', 'id', 'name']);
 });
 
-test('global candidate changes propagate across presets; removal is guarded for defaults and prunes role references', async context => {
-  const ui = collection(); ui.candidates.push({ id: 'extra', name: 'Extra', provider: 'p', model: 'extra', effort: null });
-  ui.configs[1].overrides.push({ id: 'extra', name: 'Secondary extra', description: 'Role' });
-  const h = harness(context, ui);
-  assert.equal(h.editor.removeCandidate('same-id'), false); assert.equal(h.editor.getSnapshot().dirty, false);
-  assert.equal(h.editor.removeCandidate('extra'), true); assert.equal(await h.editor.save(), true);
-  assert.equal(h.snapshot().user.ui.candidates.length, 1);
-  assert.equal(h.snapshot().user.ui.configs[1].overrides.some(row => row.id === 'extra'), false);
-  h.editor.edit(next => { next.candidates[0].model = 'new-global-model'; next.enabled = false; next.limits.maxActivePerModel = 3; });
-  assert.equal(await h.editor.save(), true); assert.equal(await h.editor.switchConfig('b'), true);
-  assert.equal(h.editor.getSnapshot().draft.candidates[0].model, 'new-global-model');
-  assert.equal(h.editor.getSnapshot().draft.enabled, false); assert.equal(h.editor.getSnapshot().draft.limits.maxActivePerModel, 3);
-});
-
-test('delete then add before autosave never reuses a persisted candidate identity or its old role overrides', async context => {
-  const ui = collection(); ui.candidates.push({ id: 'candidate-1', name: 'Old extra', provider: 'p', model: 'old', effort: null });
-  ui.configs[1].overrides.push({ id: 'candidate-1', name: 'Old role', description: 'Old instructions' });
-  const h = harness(context, ui);
-  assert.equal(h.editor.removeCandidate('candidate-1'), true);
-  assert.equal(h.editor.addCandidate(), true);
-  const added = h.editor.getSnapshot().draft.candidates.at(-1);
-  assert.notEqual(added.id, 'candidate-1');
-  h.editor.edit(next => Object.assign(next.candidates.at(-1), { name: 'New extra', provider: 'p', model: 'new', effort: null }));
+test('manual models and a pool that can be emptied persist separately across preset switches', async context => {
+  const h = harness(context);
+  const untouched = copy(h.snapshot().user.ui.configs[1]);
+  assert.equal(h.editor.removeCandidate('same-id', 'pool'), true);
   assert.equal(await h.editor.save(), true);
-  const saved = h.snapshot().user.ui;
-  assert.equal(saved.candidates.at(-1).name, 'New extra'); assert.equal(saved.candidates.at(-1).model, 'new');
-  assert.equal(saved.configs[1].overrides.some(row => row.id === 'candidate-1' || row.id === added.id), false);
+  assert.deepEqual(h.snapshot().user.ui.candidates, []);
+  assert.equal(compileStoredConfig(h.snapshot().user.ui).defaultCandidateId, 'same-id');
+  h.editor.edit(next => { next.candidates[0].model = 'outside-pool'; next.limits.maxActivePerModel = 3; });
+  assert.equal(await h.editor.save(), true);
+  assert.equal(compileStoredConfig(h.snapshot().user.ui).candidates[0].model, 'outside-pool');
+  assert.deepEqual(h.snapshot().user.ui.configs[1], untouched);
   assert.equal(await h.editor.switchConfig('b'), true);
-  assert.equal(h.editor.getSnapshot().draft.candidates.at(-1).name, 'New extra');
-  assert.notEqual(h.editor.getSnapshot().draft.candidates.at(-1).description, 'Old instructions');
+  assert.equal(h.editor.getSnapshot().draft.candidates[0].model, 'one');
+  assert.equal(h.editor.getSnapshot().draft.limits.maxActivePerModel, 3);
+});
+
+test('delete then add in either editor does not reuse a persisted profile identity', async context => {
+  for (const target of ['preset', 'pool']) {
+    const ui = collection(), extra = { id: 'candidate-1', name: 'Old extra', provider: 'p', model: 'old', effort: null };
+    ui.candidates.push(extra); ui.configs[0].candidates.push(extra); ui.configs[1].candidates.push(extra);
+    const h = harness(context, ui);
+    assert.equal(h.editor.removeCandidate(extra.id, target), true);
+    assert.equal(h.editor.addCandidate(target), true);
+    const added = h.editor.candidateRows(target).at(-1);
+    assert.notEqual(added.id, extra.id);
+    h.editor.edit(next => Object.assign(next.candidates.at(-1), { name: 'New extra', provider: 'p', model: 'new', effort: null }), target);
+    assert.equal(await h.editor.save(), true);
+    const saved = h.snapshot().user.ui;
+    assert.equal(h.editor.candidateRows(target).at(-1).model, 'new');
+    assert.deepEqual(saved.configs[1].candidates, ui.configs[1].candidates);
+    assert.deepEqual(target === 'pool' ? saved.configs[0].candidates : saved.candidates, ui.candidates);
+  }
 });
 
 test('generated presets reject missing/ambiguous pool routes without adding or removing available candidates', async context => {
@@ -375,21 +400,21 @@ test('generated presets reject missing/ambiguous pool routes without adding or r
   }
 });
 
-test('multi-preset UI keeps model selectors only in the global pool, not preset role controls', context => {
+test('multi-preset UI exposes separate model selectors in preset and draft pool editors', context => {
   const h = harness(context), nodes = flatten(plugin.RouterPage({ editor: h.editor, t }));
   const details = nodes.find(row => row?.props?.['data-workspace-panel'] === 'details');
   const pool = nodes.find(row => row?.props?.['data-workspace-panel'] === 'pool');
   const roles = flatten(details).filter(row => row?.props?.['data-candidate']);
   const pools = flatten(pool).filter(row => row?.props?.['data-pool-candidate']);
   assert.equal(roles.length, 1); assert.equal(pools.length, 1);
-  assert.equal(flatten(roles).filter(row => row?.type === 'select').length, 0);
+  assert.equal(flatten(roles).filter(row => row?.type === 'select').length, 2);
   assert.equal(flatten(pools).filter(row => row?.type === 'select').length, 2);
   assert.equal(pool.props['data-shared-pool'], true);
   assert.equal(flatten(details).some(row => row?.props?.['data-pool-candidate']), false);
   assert.equal(flatten(pool).some(row => row?.props?.['data-candidate']), false);
 });
 
-test('a new v4 candidate can receive its initial name in the global model pool before saving', async context => {
+test('a new draft pool candidate can be configured and saved without editing any preset', async context => {
   const h = harness(context), before = copy(h.snapshot().user.ui);
   const catalog = new plugin.ModelCatalog(h.ctx); context.after(() => catalog.dispose());
   catalog.publish({ status: 'ready', groups: [{ id: 'p', name: 'P', models: [{ id: 'one' }, { id: 'two' }] }], failures: [] });
@@ -397,11 +422,13 @@ test('a new v4 candidate can receive its initial name in the global model pool b
     .find(row => row?.props?.['data-workspace-panel'] === 'pool'));
   const candidate = id => pool().find(row => row?.props?.['data-pool-candidate'] === id);
   const field = (row, type, key) => flatten(row).find(node => node?.type === type && node.props['aria-label'] === t(key));
-  assert.equal(field(candidate('same-id'), 'input', 'poolName'), undefined);
-  pool().find(row => row?.type === 'button' && row.props.children.includes(t('addCandidate'))).props.onClick();
-  const { id } = h.editor.getSnapshot().draft.candidates.at(-1);
+  assert.equal(field(candidate('same-id'), 'input', 'poolName').props.value, 'one');
+  pool().find(row => row?.type === 'button' && row.props.children.includes(t('addPoolCandidate'))).props.onClick();
+  const { id } = h.editor.candidateRows('pool').at(-1);
   const name = field(candidate(id), 'input', 'poolName');
-  assert.equal(candidate(id).props.open, true);
+  const mountedDisclosure = { open: false };
+  candidate(id).props.ref(mountedDisclosure);
+  assert.equal(mountedDisclosure.open, true);
   assert.equal(name.props.value, ''); assert.equal(name.props.disabled, false);
   name.props.onChange({ target: { value: 'Shared new model' } });
   assert.equal(h.mutations.length, 0); assert.equal(h.timers.size, 0);
@@ -413,11 +440,11 @@ test('a new v4 candidate can receive its initial name in the global model pool b
   assert.equal(saved.candidates.at(-1).name, 'Shared new model');
   assert.equal(saved.candidates.at(-1).model, 'two');
   assert.deepEqual(saved.configs, before.configs);
-  assert.equal(field(candidate(id), 'input', 'poolName'), undefined);
+  assert.equal(field(candidate(id), 'input', 'poolName').props.value, 'Shared new model');
 });
 
 test('preset details offer a saved default without a catalog; autosave preserves all other preset data', async context => {
-  const ui = collection();
+  const ui = legacyCollection();
   ui.candidates[0].description = 'Global description';
   ui.candidates.push({ ...ui.candidates[0], id: 'extra', effort: 'high' });
   ui.configs[0].overrides = [{ id: 'same-id', name: 'Primary role' }];
@@ -438,7 +465,7 @@ test('preset details offer a saved default without a catalog; autosave preserves
   picker.props.onChange({ target: { value: 'extra' } });
   assert.equal(h.timers.size, 1); assert.equal(h.mutations.length, 0);
   assert.equal(await h.editor.save(), true);
-  const expected = copy(ui); expected.configs[0].defaultCandidateId = 'extra';
+  const expected = copy(plugin.configSetFrom({ ui }, t('initialConfig'))); expected.configs[0].defaultCandidateId = 'extra';
   assert.deepEqual(h.snapshot().user.ui, expected);
   assert.equal(await h.editor.switchConfig('b'), true);
   const afterSwitch = flatten(plugin.RouterPage({ editor: h.editor, t })).find(isPicker);
@@ -447,7 +474,7 @@ test('preset details offer a saved default without a catalog; autosave preserves
   assert.equal(h.editor.getSnapshot().dirty, false);
 });
 
-test('legacy single-policy settings can still choose a default without migrating', async context => {
+test('legacy single-policy defaults remain editable and migrate with the preset', async context => {
   const ui = policy(); ui.candidates.push({ id: 'extra', name: 'Extra', provider: 'p', model: 'extra', effort: null });
   const h = harness(context, ui);
   const nodes = flatten(plugin.RouterPage({ editor: h.editor, t }));
@@ -455,7 +482,7 @@ test('legacy single-policy settings can still choose a default without migrating
   assert.equal(select.props.disabled, false);
   select.props.onChange({ target: { value: 'extra' } });
   assert.equal(await h.editor.save(), true);
-  assert.deepEqual(h.snapshot().user.ui, { ...ui, defaultCandidateId: 'extra' });
+  assert.deepEqual(h.snapshot().user.ui, copy(plugin.configSetFrom({ ui: { ...ui, defaultCandidateId: 'extra' } }, t('initialConfig'))));
 });
 
 test('both languages render generic names, explicit delete controls and no preset scene selector', context => {

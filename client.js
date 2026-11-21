@@ -11,45 +11,45 @@ window.__ModuleLoader__.load({
     const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     const stable = value => JSON.stringify(value, (_key, item) => item && !Array.isArray(item) && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
     const zh = {
-  "workspaceIntro": "先选预设，再查看分工、管理可选模型或生成草稿。",
+  "workspaceIntro": "选择预设后，可手动编辑委派模型，或用 AI 生成草稿。",
   "workspaceNav": "配置工作区",
   "presetDetails": "预设详情",
-  "presetDetailsHelp": "默认模型、候选名称和分工说明只属于此预设。",
-  "availableModels": "可选模型",
-  "sharedScope": "所有预设共用",
+  "presetDetailsHelp": "从 DSH 模型目录选择任意可用模型和思考档位。修改只影响当前预设。",
+  "availableModels": "草稿可用模型",
+  "sharedScope": "仅用于草稿",
   "presetScope": "仅当前预设",
   "managePresetOps": "预设操作",
-  "editRoles": "查看和编辑模型分工",
-  "legacyDetailsHelp": "默认模型用于未指定候选的委派；可前往「可选模型」编辑候选。",
-  "legacyPoolHelp": "配置当前档案的候选名称、模型、思考档位和适用说明。",
-  "poolName": "候选初始名称",
-  "poolNameHelp": "新候选需要名称；保存后可在各预设中单独调整。",
-  "poolEmpty": "还没有可选模型。添加后可设为默认模型，也可用于生成草稿。",
+  "poolName": "档案名称",
+  "poolProfiles": "草稿模型档案",
+  "addPoolCandidate": "添加草稿模型",
+  "draftRemovedRoutes": "应用时移除的委派模型",
+  "presetDefaultBadge": "默认",
+  "removeDefaultHelp": "移除默认档案后，请选择新的默认项；如已关闭创建路由，也可清空默认项。",
+  "switchNeedsDefault": "该预设未设置默认委派模型。请先关闭创建路由，再切换并设置默认项。",
+  "poolEmpty": "还没有草稿可用模型。添加后即可在生成草稿时使用。",
   "draftTab": "生成草稿",
-  "draftPresetIntro": "生成模型根据要求，为当前预设拟定分工与默认项。草稿不会新增或删除全局模型。",
-  "draftPoolScope": "从可选模型中勾选允许委派的模型与档位。",
-  "draftPoolEmpty": "没有可用于草稿的模型。请先在「可选模型」中配置目录有效、且档位不重复的候选。",
+  "draftPresetIntro": "先选生成模型，再从「草稿可用模型」里选出可写入当前预设的档案。",
+  "draftPoolScope": "从草稿可用模型中勾选本次允许写入预设的模型和档位。",
+  "draftPoolEmpty": "没有可用于草稿的档案。请在「草稿可用模型」中添加目录可用且不重复的模型与档位。",
   "draftScopeChanged": "部分已选档案已不可用。取消勾选或清空后重新选择。",
   "draftNoMatches": "未找到匹配的模型。",
   "draftDuplicateScope": "相同 Provider、模型和档位配置了多个候选，无法用于草稿；请到「可选模型」调整。",
   "draftInputSettings": "调整生成输入",
   "draftReview": "审阅草稿",
-  "draftNoChanges": "草稿未列出的候选保持原有名称和分工。",
+  "draftNoChanges": "应用会替换当前预设的委派模型和默认项，不会修改草稿可用模型或其他预设。",
   "draftBeforeDefault": "当前默认",
   "draftNewDefault": "草稿默认",
   "draftNewRole": "现有配置没有此候选",
   "draftNoDescription": "未填写分工说明",
-  "draftLegacyReplace": "应用会替换候选清单与默认项；未列在草稿中的现有候选会移除。",
   "draftGeneratorHelp": "仅用于写草稿，可以不是委派模型。",
   "draftTarget": "应用目标",
   "workspaceStatus": "保存状态",
   "draftPendingBadge": "待审阅",
-  "draftConfirmPreset": "我已核对变更，确认仅更新当前预设的模型名称、分工说明和默认项；全局可用模型池、档位、启用开关、配额和审计设置不变。",
+  "draftConfirmPreset": "我已核对新增、保留和移除的模型，确认替换当前预设的委派模型和默认项。",
   "sharedPool": "全局可用模型池",
-  "sharedPoolHelp": "这里的新增、删除、模型和档位修改对所有预设生效；切换预设不会改变它们。",
+  "sharedPoolHelp": "所有预设生成草稿时共用这份列表。这里的改动不会影响手动选模或已保存的预设。",
   "presetRoles": "当前预设的模型分工",
-  "draftPoolMismatch": "草稿包含全局池中没有的模型／档位，或对应多个候选而无法唯一匹配。未应用。请先在全局可用模型池中添加或明确调整候选，再重新生成。",
-  "poolDefaultInUse": "此候选仍是某套预设的默认项。请先切到相关预设更换默认项，再从全局模型池删除。",
+  "draftPoolMismatch": "草稿中的模型或档位不在草稿池内，或对应多个档案。尚未应用，请调整草稿池后重新生成。",
   "configSets": "多模型预设",
   "configSetsHelp": "预设由你自由命名，只保存模型分工、名称和默认项。所有预设共用可选模型、启用开关和配额。",
   "activeConfig": "当前预设",
@@ -76,11 +76,9 @@ window.__ModuleLoader__.load({
   "providers": "个 Provider",
   "models": "个模型",
   "draftTitle": "生成候选草稿",
-  "draftIntro": "选生成模型 → 勾选委派范围 → 填写要求。生成后确认应用，不会自动覆盖配置。",
   "draftGenerator": "1 · 生成模型",
   "draftGeneratorEffort": "思考档位",
   "draftScope": "2 · 允许的委派执行档案",
-  "draftScopeHelp": "勾选允许委派的档位，可多选。支持搜索模型。",
   "draftClearScope": "清空委派范围",
   "draftRequirements": "3 · 生成要求（最多 8000 字符）",
   "draftCost": "生成可能产生费用；失败不重试、不换模型。取消会请求中止，但已发生的费用仍可能计入。",
@@ -110,7 +108,6 @@ window.__ModuleLoader__.load({
   "draftDescription": "草稿适用说明",
   "draftDefault": "草稿默认候选",
   "draftChooseDefault": "请选择草稿默认候选",
-  "draftConfirm": "我已核对现有 → 草稿变更，确认仅替换候选清单与默认项，保留启用状态、配额及审计设置。",
   "draftApply": "校验并应用",
   "draftRemove": "移除草稿候选",
   "manualTitle": "手动编辑（自动保存）",
@@ -156,17 +153,17 @@ window.__ModuleLoader__.load({
   "executionEvidence": "保存或列出候选不会执行委派，也不能证明子 Agent 的实际路由；实际父作用域证据请通过 router_status 查询。",
   "title": "委派执行档案",
   "summary": "选择模型与思考档位，生成并确认配置；也可展开手动编辑。",
-  "candidates": "候选清单",
+  "candidates": "委派模型",
   "addCandidate": "添加候选",
   "name": "候选名称",
   "description": "适用说明（一句话）",
   "effort": "思考档位",
   "defaultCandidate": "默认委派模型",
   "defaultCandidateHelp": "从已配置的模型中选择。更改会自动保存，仅用于当前预设下未指定候选的后续委派。",
-  "defaultCandidateEmpty": "暂无可选模型，请先在手动编辑中添加候选。",
+  "defaultCandidateEmpty": "请先添加委派模型",
   "defaultCandidateNoEffort": "无档位",
   "chooseDefault": "未指定默认候选（仅关闭时允许）",
-  "noCandidates": "尚无候选。添加一个候选，并从目录选择精确 provider / model / 思考档位。",
+  "noCandidates": "还没有委派模型。添加后，可从 DSH 模型目录选择模型和思考档位。",
   "catalogHelp": "候选模型从 DSH 原生目录选择，档位为目录公示的真实值单选；明确无可选档位时保存 null，不补造 default。目录可见不代表授权或通过后端预检。",
   "noReasoning": "目录确认此模型没有可选思考档位；本候选使用 null，不发送思考档位。",
   "noEffort": "无可选档位（null）",
@@ -176,50 +173,50 @@ window.__ModuleLoader__.load({
   "advanced": "高级与安全设置",
   "auditFile": "审计路径（由原生设置管理）",
   "auditHelp": "此表单保留既有 auditFile，不清除日志或锁。需要修改时请使用原生设置。",
-  "invalidSource": "配置结构无效（需要 v3 单套或 v4 多套配置），已阻止此表单覆盖原文；请在原生设置核对修复。",
+  "invalidSource": "配置结构无效（支持 v3、v4 和 v5）。为避免覆盖原始配置，请在原生设置中核对修复。",
   "invalidSourceTitle": "无效配置",
   "originalConfiguration": "原始配置（只读）"
 };
     const en = {
-  "workspaceIntro": "Select a preset, then review its roles, manage available models, or generate a draft.",
+  "workspaceIntro": "Select a preset, then edit its delegation models manually or generate a draft with AI.",
   "workspaceNav": "Configuration workspace",
   "presetDetails": "Preset details",
-  "presetDetailsHelp": "The default, candidate names, and role descriptions are specific to this preset.",
-  "availableModels": "Available models",
-  "sharedScope": "Shared by all presets",
+  "presetDetailsHelp": "Choose any available model and effort from the DSH catalog. Changes affect only this preset.",
+  "availableModels": "Draft model pool",
+  "sharedScope": "Drafts only",
   "presetScope": "Current preset only",
   "managePresetOps": "Preset actions",
-  "editRoles": "View and edit model roles",
-  "legacyDetailsHelp": "The default is used when delegation does not specify a candidate. Edit candidates under Available models.",
-  "legacyPoolHelp": "Configure the candidate names, models, efforts, and usage descriptions for this profile.",
-  "poolName": "Initial candidate name",
-  "poolNameHelp": "New candidates need a name. Each preset can override it after saving.",
-  "poolEmpty": "Add an available model to set a default or use it in a draft.",
+  "poolName": "Profile name",
+  "poolProfiles": "Draft profiles",
+  "addPoolCandidate": "Add draft model",
+  "draftRemovedRoutes": "Delegation models removed by applying",
+  "presetDefaultBadge": "Default",
+  "removeDefaultHelp": "After removing the default, select a new one. If creation routing is off, you can clear the default instead.",
+  "switchNeedsDefault": "This preset has no default. Turn off creation routing before switching to it and setting a default.",
+  "poolEmpty": "No models in the draft pool. Add models here to use them when generating drafts.",
   "draftTab": "Generate draft",
-  "draftPresetIntro": "The generator proposes roles and a default for the current preset. It never adds or removes shared models.",
-  "draftPoolScope": "Select the available models and efforts the draft may assign roles to.",
-  "draftPoolEmpty": "No models can be used in a draft. Configure candidates with valid, distinct catalog profiles under Available models.",
+  "draftPresetIntro": "Choose a model to write the draft, then select which profiles the draft may assign to the current preset.",
+  "draftPoolScope": "Select the models and efforts this draft may include from the draft model pool.",
+  "draftPoolEmpty": "No eligible draft profiles. Add distinct model and effort combinations from the catalog to the draft model pool.",
   "draftScopeChanged": "Some selected profiles are no longer available. Deselect them or clear the selection and start again.",
   "draftNoMatches": "No matching models.",
   "draftDuplicateScope": "Multiple candidates have this provider, model, and effort. Adjust them under Available models before using them in a draft.",
   "draftInputSettings": "Adjust generation inputs",
   "draftReview": "Review draft",
-  "draftNoChanges": "Candidates not listed here keep their existing names and roles.",
+  "draftNoChanges": "Applying replaces this preset’s delegation models and default without changing the draft model pool or other presets.",
   "draftBeforeDefault": "Current default",
   "draftNewDefault": "Draft default",
   "draftNewRole": "No matching candidate in the current configuration",
   "draftNoDescription": "No role description",
-  "draftLegacyReplace": "Applying replaces the candidate list and default. Existing candidates that are not in the draft will be removed.",
   "draftGeneratorHelp": "This model writes the draft. It does not need to be a delegation model.",
   "draftTarget": "Applies to",
   "workspaceStatus": "Save status",
   "draftPendingBadge": "Review pending",
-  "draftConfirmPreset": "I reviewed the changes and confirm updating only the current preset’s model names, roles and default. The global pool, efforts, enabled state, limits and audit settings remain unchanged.",
+  "draftConfirmPreset": "I reviewed the additions, retained models and removals, and confirm replacing this preset’s delegation models and default.",
   "sharedPool": "Global available model pool",
-  "sharedPoolHelp": "Adding, removing or changing models and efforts here affects every preset. Switching presets never changes this pool.",
+  "sharedPoolHelp": "All presets share this list when generating drafts. Changes here do not affect manual model selection or saved presets.",
   "presetRoles": "Current preset model roles",
-  "draftPoolMismatch": "The draft contains a model/effort outside the global pool, or an ambiguous candidate match. Nothing was applied. Update the global pool explicitly and generate again.",
-  "poolDefaultInUse": "This candidate is still a preset default. Select that preset and change its default before removing the candidate from the global pool.",
+  "draftPoolMismatch": "A draft model and effort is missing from the pool or matches more than one profile. Nothing was applied. Adjust the pool and generate again.",
   "configSets": "Multi-model presets",
   "configSetsHelp": "Name your presets freely. Only model roles, names and the default are preset-specific. Available models, enabled state and limits are shared globally.",
   "activeConfig": "Current preset",
@@ -246,11 +243,9 @@ window.__ModuleLoader__.load({
   "providers": "providers",
   "models": "models",
   "draftTitle": "Generate candidate draft",
-  "draftIntro": "Choose a generator, select allowed profiles, then enter requirements. Review and confirm before applying.",
   "draftGenerator": "1 · Generator model",
   "draftGeneratorEffort": "Reasoning effort",
   "draftScope": "2 · Allowed delegation profiles",
-  "draftScopeHelp": "Select allowed efforts for delegation. Search to narrow the list.",
   "draftClearScope": "Clear delegation scope",
   "draftRequirements": "3 · Requirements (maximum 8000 characters)",
   "draftCost": "Generation may incur charges. No automatic retries or model substitution. Cancellation requests abort but may not prevent charges already incurred.",
@@ -280,7 +275,6 @@ window.__ModuleLoader__.load({
   "draftDescription": "Draft usage description",
   "draftDefault": "Draft default candidate",
   "draftChooseDefault": "Choose a draft default",
-  "draftConfirm": "I reviewed the existing → draft changes and confirm replacing only candidates and the default, preserving enabled state, quotas and audit settings.",
   "draftApply": "Validate and apply",
   "draftRemove": "Remove draft candidate",
   "manualTitle": "Manual editing (autosave)",
@@ -326,17 +320,17 @@ window.__ModuleLoader__.load({
   "executionEvidence": "Saving or listing candidates does not execute delegation or prove actual child routing; query actual parent-scoped evidence with router_status.",
   "title": "Delegation execution profiles",
   "summary": "Choose models and reasoning efforts, generate a draft and confirm. Manual editing is also available.",
-  "candidates": "Candidate list",
+  "candidates": "Delegation models",
   "addCandidate": "Add candidate",
   "name": "Candidate name",
   "description": "Usage description (one sentence)",
   "effort": "Reasoning effort",
   "defaultCandidate": "Default delegation model",
   "defaultCandidateHelp": "Choose from configured models. Changes are saved automatically and apply only to future delegations that do not specify a candidate under this preset.",
-  "defaultCandidateEmpty": "No models to choose from. Add a candidate in the manual editor first.",
+  "defaultCandidateEmpty": "Add a delegation model first",
   "defaultCandidateNoEffort": "No effort",
   "chooseDefault": "No default candidate (disabled routing only)",
-  "noCandidates": "No candidates yet. Add one and choose an exact provider / model / effort from the catalog.",
+  "noCandidates": "No delegation models yet. Add one and pick a model and effort from the DSH catalog.",
   "catalogHelp": "Candidate models use the native DSH catalog and one real advertised effort. Confirmed effort-less entries use null, never an invented default. Catalog visibility is not authorization or backend preflight approval.",
   "noReasoning": "The catalog confirms no selectable reasoning efforts for this model. This candidate uses null and sends no reasoning effort.",
   "noEffort": "No selectable effort (null)",
@@ -346,7 +340,7 @@ window.__ModuleLoader__.load({
   "advanced": "Advanced and safety settings",
   "auditFile": "Audit path (managed in native settings)",
   "auditHelp": "This form preserves auditFile and never clears journals or locks. Change the path through native settings.",
-  "invalidSource": "Invalid configuration structure (v3 single or v4 named configurations required). This form cannot overwrite the original; review and repair it in native settings.",
+  "invalidSource": "Invalid configuration structure (supported: v3, v4 and v5). Review and repair it in native settings; this form will not overwrite the original.",
   "invalidSourceTitle": "Invalid configuration",
   "originalConfiguration": "Original configuration (read-only)"
 };
@@ -361,9 +355,8 @@ window.__ModuleLoader__.load({
       ui.limits = { ...emptyDraft().limits, ...ui.limits };
       return ui;
     }
-    // Strict v3 guard: a stored policy key (even undefined-valued), a non-v3
-    // schemaVersion, malformed structures or any unrecognized persistent key is
-    // read-only invalid data, never a fresh empty draft and never auto-repaired.
+    // Unsupported structures and unrecognized persistent keys are read-only;
+    // opening the UI never repairs or migrates the stored document.
     function invalidSource(value) {
       if (value && typeof value === 'object' && !Array.isArray(value) &&
           (Object.hasOwn(value, 'policy') || Object.keys(value).some(key => !PLUGIN_KEYS.includes(key)) ||
@@ -372,7 +365,7 @@ window.__ModuleLoader__.load({
       if (source === undefined) return false;
       if (!source || typeof source !== 'object' || Array.isArray(source)) return true;
       const object = item => item && typeof item === 'object' && !Array.isArray(item);
-      if (source.schemaVersion === 4) return !validConfigSets(source);
+      if (isConfigSet(source)) return !validConfigSets(source);
       if (source.schemaVersion !== 3) return true;
       for (const key of Object.keys(source)) if (!UI_KEYS.includes(key)) return true;
       if (source.enabled !== undefined && typeof source.enabled !== 'boolean') return true;
@@ -381,24 +374,14 @@ window.__ModuleLoader__.load({
       if (source.limits !== undefined && (!object(source.limits) || Object.keys(source.limits).some(key => !LIMIT_KEYS.includes(key)))) return true;
       return false;
     }
-    function draftFrom(value) {
-      if (invalidSource(value)) return emptyDraft();
-      const source = value?.ui;
-      return source?.schemaVersion === 4 ? projectConfigSet(source) : withDefaults(source);
-    }
-    // Equality normalization fills documented defaults only for legitimate v3
-    // sources; a bad source (for example an explicit empty {}) is preserved as-is
-    // so comparisons stay unequal instead of fabricating a valid acknowledgement.
     function normalizeAckUi(value) {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-      if (invalidSource({ ui: value })) return value;
-      if (value.schemaVersion === 4) {
-        const pool = normalizeAckUi({ schemaVersion: 3, enabled: false, candidates: value.candidates, limits: value.limits });
-        return { ...clone(value), enabled: value.enabled ?? false, candidates: pool.candidates, limits: pool.limits, configs: value.configs.map(row => ({ ...row, overrides: clone(row.overrides ?? []) })) };
-      }
-      const ui = withDefaults(value);
-      if (Array.isArray(ui.candidates)) ui.candidates = ui.candidates.map(candidate => ({ description: '', ...candidate }));
-      return ui;
+      if (!value || typeof value !== 'object' || Array.isArray(value) || invalidSource({ ui: value })) return value;
+      const rows = candidates => (candidates ?? []).map(row => ({ description: '', ...row }));
+      if (value.schemaVersion === 5) return {
+        ...clone(value), enabled: value.enabled ?? false, candidates: rows(value.candidates), limits: { ...emptyDraft().limits, ...value.limits },
+        configs: value.configs.map(row => ({ ...row, name: configName(row.name), candidates: rows(row.candidates) }))
+      };
+      return value;
     }
     function validDraft(ui) {
       if (ui.schemaVersion !== 3 || !Array.isArray(ui.candidates) || ui.candidates.length > 128) return false;
@@ -426,40 +409,63 @@ window.__ModuleLoader__.load({
       }
       return (!ui.enabled || ids.has(ui.defaultCandidateId)) && (ui.defaultCandidateId === undefined || ids.has(ui.defaultCandidateId));
     }
-    // One global candidate pool; presets contain text/default overrides only.
     const CONFIG_SET_KEYS = ['schemaVersion', 'enabled', 'candidates', 'limits', 'activeConfigId', 'configs'];
-    const CONFIG_ROW_KEYS = ['id', 'name', 'defaultCandidateId', 'overrides'];
+    const CONFIG_ROW_KEYS = ['id', 'name', 'defaultCandidateId'];
     const OVERRIDE_KEYS = ['id', 'name', 'description'];
+    const isConfigSet = value => value?.schemaVersion === 4 || value?.schemaVersion === 5;
     const configName = value => typeof value === 'string' ? value.trim() : '';
     const validConfigName = value => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 120 && !/[\x00-\x1f\x7f]/.test(value);
-    function projectConfigSet(value, configId = value.activeConfigId) {
-      const preset = value.configs.find(row => row.id === configId);
+    function presetCandidates(value, preset) {
+      if (value.schemaVersion === 5) return preset.candidates;
       const overrides = new Map((preset.overrides ?? []).map(row => [row.id, row]));
-      const result = withDefaults({ schemaVersion: 3, enabled: value.enabled ?? false, candidates: value.candidates ?? [], limits: value.limits });
-      result.candidates = result.candidates.map(row => ({ ...row, ...overrides.get(row.id) }));
-      if (preset.defaultCandidateId !== undefined) result.defaultCandidateId = preset.defaultCandidateId;
-      return result;
+      return (value.candidates ?? []).map(row => ({ ...row, ...overrides.get(row.id) }));
+    }
+    function projectConfigSet(value, preset = value.configs.find(row => row.id === value.activeConfigId)) {
+      return withDefaults({ schemaVersion: 3, enabled: (value.schemaVersion === 4 || preset.id === value.activeConfigId) && !!value.enabled, candidates: presetCandidates(value, preset), limits: value.limits,
+        ...(preset.defaultCandidateId === undefined ? {} : { defaultCandidateId: preset.defaultCandidateId }) });
     }
     function validConfigSets(value) {
-      if (!value || typeof value !== 'object' || Array.isArray(value) || value.schemaVersion !== 4 ||
+      if (!value || typeof value !== 'object' || Array.isArray(value) || !isConfigSet(value) ||
           Object.keys(value).some(key => !CONFIG_SET_KEYS.includes(key)) || !Array.isArray(value.configs) || value.configs.length < 1 || value.configs.length > 32 ||
+          value.enabled !== undefined && typeof value.enabled !== 'boolean' ||
           invalidSource({ ui: { schemaVersion: 3, enabled: false, candidates: value.candidates, limits: value.limits } }) ||
           !validDraft(withDefaults({ schemaVersion: 3, enabled: false, candidates: value.candidates, limits: value.limits }))) return false;
+      const independent = value.schemaVersion === 5;
       const ids = new Set(), names = new Set(), poolIds = new Set((value.candidates ?? []).map(row => row.id));
+      const keys = [...CONFIG_ROW_KEYS, independent ? 'candidates' : 'overrides'];
       for (const row of value.configs) {
-        if (!row || typeof row !== 'object' || Array.isArray(row) || Object.keys(row).some(key => !CONFIG_ROW_KEYS.includes(key)) ||
-            typeof row.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/.test(row.id) || ids.has(row.id) || !validConfigName(row.name) ||
-            row.overrides !== undefined && !Array.isArray(row.overrides)) return false;
-        const name = configName(row.name).toLowerCase(), refs = new Set();
-        for (const item of row.overrides ?? []) {
-          if (!item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(key => !OVERRIDE_KEYS.includes(key)) ||
-              !poolIds.has(item.id) || refs.has(item.id) || typeof item.name !== 'string') return false;
-          refs.add(item.id);
+        if (!row || typeof row !== 'object' || Array.isArray(row) || Object.keys(row).some(key => !keys.includes(key)) ||
+            typeof row.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/.test(row.id) || ids.has(row.id) || !validConfigName(row.name)) return false;
+        if (independent) {
+          if (!Array.isArray(row.candidates)) return false;
+        } else {
+          if (row.overrides !== undefined && !Array.isArray(row.overrides)) return false;
+          const refs = new Set();
+          for (const item of row.overrides ?? []) {
+            if (!item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(key => !OVERRIDE_KEYS.includes(key)) ||
+                !poolIds.has(item.id) || refs.has(item.id) || typeof item.name !== 'string') return false;
+            refs.add(item.id);
+          }
         }
-        if (names.has(name) || !validDraft(projectConfigSet(value, row.id))) return false;
+        const name = configName(row.name).toLowerCase();
+        if (names.has(name) || !validDraft(projectConfigSet(value, row))) return false;
         ids.add(row.id); names.add(name);
       }
       return ids.has(value.activeConfigId);
+    }
+    function configSetFrom(value, initialName) {
+      const raw = value?.ui;
+      const source = invalidSource(value) ? undefined : raw;
+      if (source?.schemaVersion === 5) return { ...clone(source), enabled: source.enabled ?? false, candidates: clone(source.candidates ?? []), limits: { ...emptyDraft().limits, ...source.limits } };
+      if (source?.schemaVersion === 4) return {
+        schemaVersion: 5, enabled: source.enabled ?? false, candidates: clone(source.candidates ?? []), limits: { ...emptyDraft().limits, ...source.limits },
+        activeConfigId: source.activeConfigId,
+        configs: source.configs.map(({ id, name, defaultCandidateId, overrides }) => ({ id, name: configName(name), candidates: presetCandidates(source, { overrides }),
+          ...(defaultCandidateId === undefined ? {} : { defaultCandidateId }) }))
+      };
+      const { enabled, candidates, limits, defaultCandidateId } = withDefaults(source);
+      return { schemaVersion: 5, enabled, candidates: clone(candidates), limits, activeConfigId: 'config-1',
+        configs: [{ id: 'config-1', name: initialName, candidates, ...(defaultCandidateId === undefined ? {} : { defaultCandidateId }) }] };
     }
     const CATALOG_EVENTS = ['llm/adapters-updated', 'llm/models-updated', 'settings/document-updated', 'credentials/record-updated', 'credentials/reference-updated'];
     const modelKey = model => JSON.stringify([model.provider, model.model]);
@@ -566,27 +572,27 @@ window.__ModuleLoader__.load({
         if (this.snapshot.status !== 'ready' || this.snapshot.failures.some(failure => failure.id === provider)) return;
         return this.snapshot.groups.find(group => group.id === provider)?.models.find(item => item.id === model);
       }
-      select(editor, index, key, expected, viewToken) {
+      select(editor, index, key, expected, viewToken, target = 'preset') {
         if (viewToken !== undefined && !editor.matchesView(viewToken)) return false;
         if (this.disposed || this.snapshot.status !== 'ready') return false;
-        const candidate = editor.getSnapshot().draft.candidates[index];
+        const candidate = editor.candidateRows(target)[index];
         if (!candidate || expected && stable(candidate) !== stable(expected)) return false;
         for (const group of this.snapshot.groups) for (const model of group.models) {
           if (key !== modelKey({ provider: group.id, model: model.id }) || !this.find(group.id, model.id)) continue;
           const options = catalogEfforts(model, editor.t);
           // Only a verified effort-less record yields null; no catalog is not null.
           const effort = options.some(option => option.id === null) ? null : options.some(option => option.id === model.reasoning?.defaultEffort) ? model.reasoning.defaultEffort : '';
-          return editor.edit(next => { Object.assign(next.candidates[index], { provider: group.id, model: model.id, effort }); });
+          return editor.edit(next => { Object.assign(next.candidates[index], { provider: group.id, model: model.id, effort }); }, target);
         }
         return false;
       }
-      setEffort(editor, index, value, expected, viewToken) {
+      setEffort(editor, index, value, expected, viewToken, target = 'preset') {
         if (viewToken !== undefined && !editor.matchesView(viewToken)) return false;
-        const candidate = editor.getSnapshot().draft.candidates[index];
+        const candidate = editor.candidateRows(target)[index];
         if (this.disposed || !candidate || expected && (candidate.id !== expected.id || modelKey(candidate) !== modelKey(expected))) return false;
         const option = catalogEfforts(this.find(candidate.provider, candidate.model), editor.t).find(option => effortKey(option.id) === value);
         if (!option) return false;
-        return editor.edit(next => { next.candidates[index].effort = option.id; });
+        return editor.edit(next => { next.candidates[index].effort = option.id; }, target);
       }
       dispose() {
         if (this.disposed) return;
@@ -609,8 +615,8 @@ window.__ModuleLoader__.load({
       read() {
         this.host = this.form.getSnapshot();
         if (!this.dirty && !this.saving && !this.reloading && !this.savedButNotLive && !this.connectionReset) {
-          this.draft = draftFrom(this.host.value);
-          this.configSet = !invalidSource(this.host.value) && this.host.value?.ui?.schemaVersion === 4 ? clone(this.host.value.ui) : undefined;
+          this.configSet = configSetFrom(this.host.value, this.t('initialConfig'));
+          this.draft = projectConfigSet(this.configSet);
           this.baseRevision = this.host.revision;
         }
         else if (!this.saving && this.host.revision !== this.baseRevision) this.conflicted = true;
@@ -625,7 +631,7 @@ window.__ModuleLoader__.load({
       scheduleAutosave() {
         // Queue only from user edits; host notifications must never retry a failed write.
         this.cancelAutosave();
-        if (!this.dirty || !this.editable() || this.conflicted || this.autosavePaused || this.composing || !validDraft(this.draft)) return;
+        if (!this.dirty || !this.editable() || this.conflicted || this.autosavePaused || this.composing || !this.draftComplete()) return;
         const epoch = this.autosaveEpoch;
         this.autosaveTimer = this.timers.setTimeout(() => {
           if (this.disposed || epoch !== this.autosaveEpoch) return;
@@ -650,54 +656,38 @@ window.__ModuleLoader__.load({
       editable(owner) {
         return (!this.generatedLock || this.generatedLock === owner) && !this.disposed && !this.conflicted && !this.saving && !this.reloading && !this.connectionReset && this.host.writable && this.host.status === 'ready' && !this.receiptUnverified && !invalidSource(this.host.value) && !invalidSource(this.host.user);
       }
-      edit(update) {
+      edit(update, target = 'preset') {
         if (!this.editable()) return false;
-        const next = clone(this.draft); update(next);
-        this.editRevision++; this.draft = next; this.dirty = true; this.saved = false;
+        if (target === 'pool') {
+          const next = clone(this.configSet); update(next); this.configSet = next;
+        } else {
+          const next = clone(this.draft); update(next); this.draft = next;
+        }
+        this.editRevision++; this.dirty = true; this.saved = false;
         if (!this.autosavePaused) { this.savedButNotLive = false; this.error = ''; }
         this.scheduleAutosave(); this.publish(); return true;
       }
-      viewToken() { return stable([this.generation, this.baseRevision, this.configSet?.activeConfigId ?? 'config-1']); }
+      editPool(update) { return this.edit(next => update(next.candidates), 'pool'); }
+      viewToken() { return stable([this.generation, this.baseRevision, this.configSet.activeConfigId]); }
       matchesView(token, requireWritable = true) {
         const current = this.form.getSnapshot();
-        const activeId = current.value?.ui?.schemaVersion === 4 ? current.value.ui.activeConfigId : 'config-1';
+        const activeId = value => isConfigSet(value?.ui) ? value.ui.activeConfigId : 'config-1';
         if (this.disposed || token !== this.viewToken()) return false;
-        // Recovery must work when desired and persisted selections/revisions differ.
         if (!requireWritable) return true;
-        const knownActiveId = this.host.value?.ui?.schemaVersion === 4 ? this.host.value.ui.activeConfigId : 'config-1';
-        return current.revision === this.baseRevision && activeId === knownActiveId &&
+        return current.revision === this.baseRevision && activeId(current.value) === activeId(this.host.value) &&
           current.status === 'ready' && current.writable && !invalidSource(current.value) && !invalidSource(current.user);
       }
-      configurationSet() {
-        if (this.configSet) return this.storedDraft();
-        const { enabled, candidates, limits, defaultCandidateId } = clone(this.draft);
-        return { schemaVersion: 4, enabled, candidates, limits, activeConfigId: 'config-1', configs: [{ id: 'config-1', name: this.t('initialConfig'), ...(defaultCandidateId === undefined ? {} : { defaultCandidateId }), overrides: [] }] };
-      }
+      configurationSet() { return this.storedDraft(); }
       storedDraft() {
-        if (!this.configSet) return clone(this.draft);
         const next = clone(this.configSet);
         next.enabled = this.draft.enabled; next.limits = clone(this.draft.limits);
-        const base = new Map((this.configSet.candidates ?? []).map(row => [row.id, row]));
-        next.candidates = this.draft.candidates.map(row => base.has(row.id) ? { ...clone(base.get(row.id)), provider: row.provider, model: row.model, effort: row.effort } : clone(row));
-        const ids = new Set(next.candidates.map(row => row.id));
-        for (const preset of next.configs) if (preset.overrides) preset.overrides = preset.overrides.filter(row => ids.has(row.id));
         const current = next.configs.find(item => item.id === next.activeConfigId);
-        if (current) {
-          if (this.draft.defaultCandidateId === undefined) delete current.defaultCandidateId; else current.defaultCandidateId = this.draft.defaultCandidateId;
-          // A model/default-only edit must not rewrite unchanged roles (in
-          // particular, an omitted description means inherit, not clear).
-          const overrides = new Map((current.overrides ?? []).map(row => [row.id, row]));
-          let rolesChanged = false;
-          for (const { id, name, description } of this.draft.candidates) {
-            const original = base.get(id), override = overrides.get(id);
-            if (!original || name === (override?.name ?? original.name) && (description ?? '') === (override?.description ?? original.description ?? '')) continue;
-            rolesChanged = true;
-            if (name === original.name && (description ?? '') === (original.description ?? '')) overrides.delete(id);
-            else overrides.set(id, { id, name, description: description ?? '' });
-          }
-          if (rolesChanged) current.overrides = [...overrides.values()];
-        }
+        current.candidates = clone(this.draft.candidates);
+        if (this.draft.defaultCandidateId === undefined) delete current.defaultCandidateId; else current.defaultCandidateId = this.draft.defaultCandidateId;
         return next;
+      }
+      draftComplete() {
+        return validDraft(this.draft) && validDraft({ ...emptyDraft(), candidates: this.configSet.candidates });
       }
       canManageConfigs() {
         return this.editable() && !this.dirty && !this.composing && !this.autosavePaused && !this.savedButNotLive && validDraft(this.draft);
@@ -725,8 +715,9 @@ window.__ModuleLoader__.load({
           let index = 1; while (next.configs.some(row => row.id === 'config-' + index)) index++;
           const id = 'config-' + index;
           const source = next.configs.find(row => row.id === next.activeConfigId);
-          const overrides = copyCurrent ? clone(source.overrides ?? []) : next.candidates.map(({ id, name }) => ({ id, name, description: '' }));
-          next.configs.push({ id, name: configName(name), ...(source.defaultCandidateId === undefined ? {} : { defaultCandidateId: source.defaultCandidateId }), overrides });
+          const candidates = clone(source.candidates);
+          if (!copyCurrent) for (const candidate of candidates) candidate.description = '';
+          next.configs.push({ id, name: configName(name), ...(source.defaultCandidateId === undefined ? {} : { defaultCandidateId: source.defaultCandidateId }), candidates });
           next.activeConfigId = id;
         });
       }
@@ -737,7 +728,9 @@ window.__ModuleLoader__.load({
       }
       switchConfig(id) {
         return this.changeConfigSet(next => {
-          if (id === next.activeConfigId || !next.configs.some(row => row.id === id)) return false;
+          const target = next.configs.find(row => row.id === id);
+          if (!target || id === next.activeConfigId) return false;
+          if (next.enabled && !target.defaultCandidateId) { this.error = this.t('switchNeedsDefault'); this.publish(); return false; }
           next.activeConfigId = id;
         });
       }
@@ -776,39 +769,35 @@ window.__ModuleLoader__.load({
         // No editor.edit(), debounce or merge of service-controlled configuration.
         // The final synchronous fence and one explicit save are inseparable.
         if (!this.matchesGenerated(expected, owner)) return false;
-        let next;
-        if (this.configSet) {
-          const pool = this.draft.candidates;
-          const mapped = new Map();
-          for (const generated of result.candidates) {
-            const matches = pool.filter(row => routeKey(row) === routeKey(generated));
-            const target = matches.length === 1 ? matches[0] : undefined;
-            if (!target || mapped.has(target.id)) { this.error = this.t('draftPoolMismatch'); this.publish(); return false; }
-            mapped.set(target.id, generated);
-          }
-          const defaultEntry = [...mapped].find(([, row]) => row.id === result.defaultCandidateId);
-          if (!defaultEntry) return false;
-          next = { ...clone(this.draft), candidates: pool.map(row => mapped.has(row.id) ? { ...row, name: mapped.get(row.id).name, description: mapped.get(row.id).description ?? '' } : clone(row)), defaultCandidateId: defaultEntry[0] };
-        } else next = { ...clone(this.draft), candidates: clone(result.candidates), defaultCandidateId: result.defaultCandidateId };
+        const targets = uniquePoolRoutes(this.configSet.candidates);
+        const mappedIds = new Map();
+        const candidates = [];
+        for (const generated of result.candidates) {
+          const target = targets.get(routeKey(generated));
+          if (!target) { this.error = this.t('draftPoolMismatch'); this.publish(); return false; }
+          mappedIds.set(generated.id, target.id);
+          candidates.push({ ...clone(generated), id: target.id });
+        }
+        const next = { ...clone(this.draft), candidates, defaultCandidateId: mappedIds.get(result.defaultCandidateId) };
         if (!validDraft(next) || !next.candidates.length || !next.candidates.some(row => row.id === next.defaultCandidateId)) return false;
         this.cancelAutosave(); this.generatedLock = undefined;
         this.editRevision++; this.draft = next; this.dirty = true; this.saved = false;
         return await this.save();
       }
-      addCandidate() {
-        if (this.draft.candidates.length >= 128) return false;
-        // Do not resurrect an unsaved deletion with its old role overrides.
-        const reserved = new Set([...this.draft.candidates, ...(this.configSet?.candidates ?? [])].map(candidate => candidate.id));
+      candidateRows(target = 'preset') { return target === 'pool' ? this.configSet.candidates : this.draft.candidates; }
+      addCandidate(target = 'preset') {
+        const rows = this.candidateRows(target);
+        if (rows.length >= 128) return false;
+        const persisted = configSetFrom(this.host.value, this.t('initialConfig'));
+        const original = target === 'pool' ? persisted.candidates : persisted.configs.find(config => config.id === this.configSet.activeConfigId)?.candidates ?? [];
+        const reserved = new Set([...rows, ...original].map(candidate => candidate.id));
         let index = 1; while (reserved.has('candidate-' + index)) index++;
-        // A fresh candidate is deliberately unfinished: empty strings block autosave
-        // until the user picks an exact model and effort; never null, never a tier.
-        return this.edit(next => next.candidates.push({ id: 'candidate-' + index, name: '', provider: '', model: '', effort: '', description: '' }));
+        // Empty model/effort deliberately block autosave until explicitly selected.
+        return this.edit(next => next.candidates.push({ id: 'candidate-' + index, name: '', provider: '', model: '', effort: '', description: '' }), target);
       }
-      removeCandidate(id) {
-        if (this.configSet && this.configurationSet().configs.some(row => row.defaultCandidateId === id)) {
-          this.error = this.t('poolDefaultInUse'); this.publish(); return false;
-        }
-        return this.edit(next => { next.candidates = next.candidates.filter(row => row.id !== id); });
+      removeCandidate(id, target = 'preset') {
+        if (!this.candidateRows(target).some(row => row.id === id)) return false;
+        return this.edit(next => { next.candidates = next.candidates.filter(row => row.id !== id); }, target);
       }
       resetConnection() {
         if (this.disposed) return;
@@ -820,7 +809,7 @@ window.__ModuleLoader__.load({
       confirmReceipt(current) {
         if (current.status !== 'ready' || stable(current.user?.ui) !== stable(this.pendingDesired)) return false;
         // An effective match alone is not a receipt: the surrounding documents must
-        // also be legitimate v3 sources; outer illegal keys keep the save not-live.
+        // also be legitimate sources; outer illegal keys keep the save not-live.
         const effective = !invalidSource(current.user) && !invalidSource(current.value) &&
           stable(normalizeAckUi(current.value?.ui)) === stable(normalizeAckUi(this.pendingDesired));
         this.receiptUnverified = false; this.pendingDesired = undefined;
@@ -856,7 +845,7 @@ window.__ModuleLoader__.load({
         this.read();
         if (this.disposed || this.saving || this.reloading || this.connectionReset || !this.dirty || !this.host.writable || this.host.status !== 'ready' || this.receiptUnverified) return false;
         if (this.conflicted || this.form.getSnapshot().revision !== this.baseRevision) { this.conflicted = true; this.publish(); return false; }
-        if (!this.editable() || !validDraft(this.draft) || this.configSet && !validConfigSets(this.storedDraft())) { this.error = this.t('invalidDraft'); this.publish(); return false; }
+        if (!this.editable() || !this.draftComplete() || !validConfigSets(this.storedDraft())) { this.error = this.t('invalidDraft'); this.publish(); return false; }
         this.editRevision++;
         const desired = this.storedDraft(), revision = this.baseRevision, generation = this.generation;
         // Only a verified receipt (or explicit reload) releases automatic saving.
@@ -891,6 +880,14 @@ window.__ModuleLoader__.load({
     }
 
     const routeKey = route => JSON.stringify([route.provider, route.model, route.effort]);
+    function uniquePoolRoutes(rows) {
+      const routes = new Map();
+      for (const row of rows) {
+        const key = routeKey(row);
+        routes.set(key, routes.has(key) ? null : row);
+      }
+      return routes;
+    }
     const routeOnly = route => ({ provider: route.provider, model: route.model, effort: route.effort });
     class DraftGenerator {
       constructor(ctx, editor, catalog, t = editor.t) {
@@ -928,10 +925,17 @@ window.__ModuleLoader__.load({
         const model = this.catalog.find(route.provider, route.model);
         return !!model && catalogEfforts(model, this.t).some(option => option.id === route.effort);
       }
+      scopeCounts() {
+        const counts = new Map();
+        for (const row of this.editor.candidateRows('pool')) counts.set(routeKey(row), (counts.get(routeKey(row)) ?? 0) + 1);
+        return counts;
+      }
+      scopeAllowed(route, counts = this.scopeCounts()) { return counts.get(routeKey(route)) === 1 && this.routeAllowed(route); }
       inputsValid() {
         const { generator, scope, requirements } = this.input;
+        const counts = this.scopeCounts();
         return this.routeAllowed(generator) && Array.isArray(scope) && scope.length > 0 && scope.length <= 128 &&
-          scope.every(route => this.routeAllowed(route)) && new Set(scope.map(routeKey)).size === scope.length &&
+          scope.every(route => this.scopeAllowed(route, counts)) && new Set(scope.map(routeKey)).size === scope.length &&
           typeof requirements === 'string' && requirements.trim().length > 0 && requirements.length <= 8000;
       }
       startRequest(epoch) {
@@ -974,7 +978,8 @@ window.__ModuleLoader__.load({
         return this.routeAllowed(route) && this.changeInput(next => { next.generator = route; });
       }
       setScope(routes) {
-        if (!Array.isArray(routes) || routes.length > 128 || !routes.every(route => this.routeAllowed(route)) || new Set(routes.map(routeKey)).size !== routes.length) return false;
+        const counts = this.scopeCounts();
+        if (!Array.isArray(routes) || routes.length > 128 || !routes.every(route => this.scopeAllowed(route, counts)) || new Set(routes.map(routeKey)).size !== routes.length) return false;
         return this.changeInput(next => { next.scope = clone(routes); });
       }
       toggleScope(route, selected) {
@@ -1016,7 +1021,7 @@ window.__ModuleLoader__.load({
         const baseline = this.editor.captureGenerated();
         if (!baseline) { this.error = this.t('draftProtected'); this.publish(); return false; }
         const editorState = this.editor.getSnapshot();
-        this.target = { id: editorState.configSet.activeConfigId, named: !!this.editor.configSet };
+        this.target = { id: editorState.configSet.activeConfigId };
         this.baseline = baseline; this.before = clone(editorState.draft);
         this.draft = undefined; this.warnings = []; this.confirmed = false; this.applyAttempted = false; this.writeSubmitted = false; this.error = ''; this.errorCode = undefined; this.status = 'generating';
         const epoch = ++this.epoch, input = clone(this.input), inputKey = stable(input), catalogRevision = this.catalogRevision;
@@ -1120,6 +1125,9 @@ window.__ModuleLoader__.load({
     const checkboxStyle = { width: 24, height: 24, flex: '0 0 auto', margin: 0 };
     const panelHeading = (title, scope, help, focusRef) => h('header', { style: { ...stackStyle, gap: 4 } },
       h('div', { style: rowStyle }, h('h3', { style: headingStyle, ref: focusRef, tabIndex: focusRef ? -1 : undefined }, title), scope ? h('span', { style: badgeStyle }, scope) : null), note(help));
+    // Open a newly added row on mount; leave the native disclosure state alone
+    // when selecting its model or when autosave refreshes the settings mirror.
+    const openNewProfile = node => { if (node) node.open = true; };
     function CatalogPanel({ catalog, blocked, t }) {
       const state = React.useSyncExternalStore(catalog?.subscribe ?? (() => () => {}), catalog?.getSnapshot ?? (() => emptyCatalog), catalog?.getSnapshot ?? (() => emptyCatalog));
       const count = state.groups.reduce((total, group) => total + group.models.length, 0);
@@ -1137,8 +1145,7 @@ window.__ModuleLoader__.load({
       const catalogState = React.useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
       const [scopeSearch, setScopeSearch] = React.useState('');
       const active = editorState.configSet.configs.find(row => row.id === editorState.configSet.activeConfigId);
-      const named = !!editor.configSet;
-      const sameTarget = state.target?.id === active.id && state.target.named === named;
+      const sameTarget = state.target?.id === active.id;
       const review = !!state.draft && sameTarget;
       const reviewHeading = React.useRef(null);
       const [reviewRequested, setReviewRequested] = React.useState(false);
@@ -1163,21 +1170,17 @@ window.__ModuleLoader__.load({
       const efforts = catalogEfforts(model, t);
       const currentModelKey = route ? modelKey(route) : '';
       const scope = new Set(state.input.scope.map(routeKey));
-      const counts = new Map();
-      for (const row of editorState.configSet.candidates) counts.set(routeKey(row), (counts.get(routeKey(row)) ?? 0) + 1);
-      const scopeAllowed = tuple => (!named || counts.get(routeKey(tuple)) === 1) && generator.routeAllowed(tuple);
+      const counts = generator.scopeCounts();
+      const scopeAllowed = tuple => generator.scopeAllowed(tuple, counts);
       const missingScope = state.input.scope.some(tuple => !scopeAllowed(tuple));
       const query = scopeSearch.trim().toLowerCase();
       const matches = text => text.toLowerCase().includes(query);
       const scopeOption = (title, tuple) => h('label', { key: routeKey(tuple), style: { ...checkStyle, overflowWrap: 'anywhere' } },
         h('input', { type: 'checkbox', style: checkboxStyle, disabled: state.busy || !scopeAllowed(tuple) || scope.size >= 128 && !scope.has(routeKey(tuple)),
           checked: scope.has(routeKey(tuple)), onChange: guarded(event => generator.toggleScope(tuple, event.target.checked)) }), h('span', null, title));
-      const poolScope = named ? editorState.configSet.candidates.filter(row => scopeAllowed(routeOnly(row))) : [];
-      const options = named
-        ? poolScope.filter(row => matches((row.name || row.id) + ' ' + profileLabel(row, t))).map(row => scopeOption((row.name || row.id) + ' · ' + profileLabel(row, t), routeOnly(row)))
-        : catalogState.groups.flatMap(group => group.models.filter(item => matches([group.id, group.name, item.id, item.name].join(' '))).map(item => h('div', { key: modelKey({ provider: group.id, model: item.id }), style: { padding: '8px 0', borderBottom: BORDER } },
-            h('strong', null, item.name + ' · ' + group.id + ' / ' + item.id),
-            h('div', { style: rowStyle }, catalogEfforts(catalog.find(group.id, item.id), t).map(effort => scopeOption(effort.name, { provider: group.id, model: item.id, effort: effort.id }))))));
+      const poolScope = editorState.configSet.candidates.filter(row => scopeAllowed(routeOnly(row)));
+      const options = poolScope.filter(row => matches((row.name || row.id) + ' ' + profileLabel(row, t)))
+        .map(row => scopeOption((row.name || row.id) + ' · ' + profileLabel(row, t), routeOnly(row)));
       const invalidInputs = missingScope || !generator.inputsValid();
       const inputs = h('div', { style: stackStyle },
         h('div', { style: { ...stackStyle, gap: 8 } }, h('h4', { style: headingStyle }, t('draftGenerator')), note(t('draftGeneratorHelp')),
@@ -1194,13 +1197,13 @@ window.__ModuleLoader__.load({
               efforts.map(item => h('option', { key: effortKey(item.id), value: effortKey(item.id) }, item.name + (item.id === null ? '' : ' (' + item.id + ')')))))),
           h(CatalogPanel, { catalog, blocked: state.busy, t })),
         disclosure(t('draftScope') + ' · ' + scope.size + '/128', [
-          note(t(named ? 'draftPoolScope' : 'draftScopeHelp')),
-          named && [...counts.values()].some(count => count > 1) ? note(t('draftDuplicateScope')) : null,
+          note(t('draftPoolScope')),
+          [...counts.values()].some(count => count > 1) ? note(t('draftDuplicateScope')) : null,
           h('input', { type: 'search', style: inputStyle, 'aria-label': t('scopeSearch'), placeholder: t('scopeSearch'), value: scopeSearch, disabled: state.busy, onChange: event => setScopeSearch(event.target.value) }),
           options.length ? h('div', { role: 'region', 'aria-label': t('draftScope'), tabIndex: 0, style: { maxHeight: 260, overflowY: 'auto' } }, options) : note(t('draftNoMatches')),
           scope.size && !missingScope ? h('div', null, button('draftClearScope', () => generator.setScope([]), state.busy)) : null
         ]),
-        named && catalogState.status === 'ready' && !poolScope.length ? h('div', { style: stackStyle }, note(t('draftPoolEmpty')), goToPool ? h('div', null, button('availableModels', goToPool)) : null) : null,
+        catalogState.status === 'ready' && !poolScope.length ? h('div', { style: stackStyle }, note(t('draftPoolEmpty')), goToPool ? h('div', null, button('availableModels', goToPool)) : null) : null,
         missingScope ? h('div', { style: stackStyle, role: 'status' }, note(t('draftScopeChanged')), h('div', null, button('draftClearScope', () => generator.setScope([]), state.busy))) : null,
         label('draftRequirements', h('textarea', { style: { ...inputStyle, minHeight: 96, resize: 'vertical' }, 'aria-label': t('draftRequirements'), maxLength: 8000, value: state.input.requirements, disabled: state.busy, onChange: guarded(event => generator.setRequirements(event.target.value)) })),
         note(t('draftCost')),
@@ -1213,16 +1216,25 @@ window.__ModuleLoader__.load({
         !blocked && invalidInputs ? note(t('draftInputRequired'), { role: 'status' }) : null);
       const statusKey = { idle: 'draftIdle', generating: 'draftGenerating', ready: 'draftReady', validating: 'draftValidating', applying: 'draftApplying', applied: 'draftApplied', error: 'draftFailed', stale: 'draftStale', conflict: 'draftConflict', cancelled: 'draftCancelled' }[state.status];
       const canEdit = !blocked && generator.editableDraft();
-      const beforeByRoute = new Map((state.before?.candidates ?? []).map(row => [routeKey(row), row]));
+      const targets = uniquePoolRoutes(editorState.configSet.candidates);
+      const previous = state.before?.candidates ?? [];
+      const beforeById = new Map(previous.map(row => [row.id, row]));
+      const retainedByDraftId = new Map();
+      for (const row of state.draft?.candidates ?? []) {
+        const route = routeKey(row), old = beforeById.get(targets.get(route)?.id);
+        if (old && routeKey(old) === route) retainedByDraftId.set(row.id, old);
+      }
       const draftField = (key, row, field, maxLength) => label(key, h(field === 'description' ? 'textarea' : 'input', {
         style: field === 'description' ? { ...inputStyle, resize: 'vertical' } : inputStyle,
         ...(field === 'description' ? { rows: 4 } : {}), 'aria-label': t(key) + ' · ' + row.id, value: row[field] ?? '', maxLength, disabled: !canEdit,
         onChange: guarded(event => generator.editCandidate(row.id, { [field]: event.target.value })) }));
       const beforeDefault = state.before?.candidates.find(row => row.id === state.before.defaultCandidateId);
+      const retainedIds = new Set([...retainedByDraftId.values()].map(row => row.id));
+      const removedRoutes = previous.filter(row => !retainedIds.has(row.id));
       const reviewBody = review ? h('div', { 'data-draft-review': true, style: stackStyle },
         note(t('draftBeforeDefault') + '：' + (beforeDefault?.name ?? '—')),
         h('div', { style: stackStyle }, state.draft.candidates.map(row => {
-          const previous = beforeByRoute.get(routeKey(row));
+          const previous = retainedByDraftId.get(row.id);
           return h('article', { key: row.id, style: { ...cardStyle, ...stackStyle, overflowWrap: 'anywhere' } },
             h('div', { style: rowStyle }, h('strong', null, profileLabel(row, t)), row.id === state.draft.defaultCandidateId ? h('span', { style: badgeStyle }, t('draftNewDefault')) : null),
             h('div', { style: autoGrid(210) },
@@ -1232,14 +1244,16 @@ window.__ModuleLoader__.load({
                 draftField('draftName', row, 'name', 120), draftField('draftDescription', row, 'description', 1000))),
             canEdit ? h('div', null, button('draftRemove', () => generator.removeCandidate(row.id))) : null);
         })),
-        named ? note(t('draftNoChanges')) : disclosure(t('draftBefore'), [note(t('draftLegacyReplace')), h('ul', { style: { margin: 0, overflowWrap: 'anywhere' } }, state.before.candidates.map(row => h('li', { key: row.id }, row.name + ' · ' + profileLabel(row, t) + ' · ' + (row.description || t('draftNoDescription')))))]),
+        note(t('draftNoChanges')),
+        removedRoutes.length ? disclosure(t('draftRemovedRoutes') + ' · ' + removedRoutes.length, h('ul', { style: { margin: 0, overflowWrap: 'anywhere' } },
+          removedRoutes.map(row => h('li', { key: row.id }, row.name + ' · ' + profileLabel(row, t)))), { open: true }) : null,
         label('draftDefault', h('select', { style: inputStyle, 'aria-label': t('draftDefault'), value: state.draft.defaultCandidateId ?? '', disabled: !canEdit, onChange: guarded(event => generator.setDefault(event.target.value)) },
           h('option', { value: '', disabled: true }, t('draftChooseDefault')), state.draft.candidates.map(row => h('option', { key: row.id, value: row.id }, row.name + ' — ' + profileLabel(row, t))))),
         h('label', { style: { ...checkStyle, alignItems: 'start', padding: '8px 0', boxSizing: 'border-box' } },
-          h('input', { type: 'checkbox', style: checkboxStyle, 'aria-label': t(named ? 'draftConfirmPreset' : 'draftConfirm'), checked: state.confirmed, disabled: !canEdit, onChange: guarded(event => generator.confirm(event.target.checked)) }), t(named ? 'draftConfirmPreset' : 'draftConfirm')),
+          h('input', { type: 'checkbox', style: checkboxStyle, 'aria-label': t('draftConfirmPreset'), checked: state.confirmed, disabled: !canEdit, onChange: guarded(event => generator.confirm(event.target.checked)) }), t('draftConfirmPreset')),
         h('div', null, button('draftApply', () => generator.validateAndApply(), !canEdit || !state.available || missingScope || !generator.canApply(), true))) : null;
       return h('section', { 'data-draft-generator': true, style: stackStyle },
-        panelHeading(t(review ? 'draftReview' : 'draftTab'), t('presetScope'), t(named ? 'draftPresetIntro' : 'draftIntro'), review ? reviewHeading : undefined),
+        panelHeading(t(review ? 'draftReview' : 'draftTab'), t('presetScope'), t('draftPresetIntro'), review ? reviewHeading : undefined),
         h('div', { style: { ...rowStyle, overflowWrap: 'anywhere' } }, note(t('draftTarget')), h('strong', null, active.name)),
         !state.available ? note(t('draftUnavailable'), { role: 'status' }) : null,
         blocked && !state.busy ? note(t('draftProtected'), { role: 'status' }) : null,
@@ -1304,7 +1318,7 @@ window.__ModuleLoader__.load({
       const json = value => h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '100%' } }, JSON.stringify(value, null, 2));
       const defaultOptions = ui.candidates.filter(candidate => candidate.id && ui.candidates.filter(other => other.id === candidate.id).length === 1);
       const defaultPicker = h('label', { style: fieldStyle }, h('span', null, t('defaultCandidate')),
-        h('select', { style: inputStyle, 'aria-label': t('defaultCandidate'), value: ui.defaultCandidateId ?? '', disabled: disabled || !defaultOptions.length, onChange: event => {
+        h('select', { style: inputStyle, 'aria-label': t('defaultCandidate'), value: ui.defaultCandidateId ?? '', disabled: disabled || !defaultOptions.length && (ui.enabled || !ui.defaultCandidateId), onChange: event => {
           const id = event.target.value, draft = editor.getSnapshot().draft;
           if (id === (draft.defaultCandidateId ?? '')) return;
           if (id === '' && !draft.enabled) edit(next => { delete next.defaultCandidateId; });
@@ -1315,66 +1329,54 @@ window.__ModuleLoader__.load({
           defaultOptions.map(candidate => h('option', { key: candidate.id, value: candidate.id },
             (candidate.name || candidate.id) + (candidate.provider && candidate.model ? ' — ' + candidate.provider + ' / ' + candidate.model + (candidate.effort === undefined || candidate.effort === '' ? '' : ' · ' + (candidate.effort === null ? t('defaultCandidateNoEffort') : candidate.effort)) : '')))),
         defaultOptions.length ? h('span', { style: mutedStyle }, t('defaultCandidateHelp')) : null);
-      const named = !!editor.configSet;
       const activeId = state.configSet.activeConfigId;
-      const persistedIds = new Set((editor.configSet?.candidates ?? []).map(row => row.id));
-      const sharedById = new Map(state.configSet.candidates.map(row => [row.id, row]));
-      const defaultOwners = new Map();
-      for (const preset of state.configSet.configs) {
-        const id = preset.defaultCandidateId;
-        if (id !== undefined) defaultOwners.set(id, [...(defaultOwners.get(id) ?? []), preset.name]);
-      }
-      const poolRows = ui.candidates.map((candidate, index) => {
-        const set = (key, value) => edit(next => { if (next.candidates[index]?.id === candidate.id) next.candidates[index][key] = value; });
+      const modelOptions = catalogState.groups.map(provider => h('optgroup', {
+        key: provider.id, label: provider.name + ' (' + provider.id + ')', disabled: catalogState.failures.some(failure => failure.id === provider.id)
+      }, provider.models.map(item => h('option', { key: item.id, value: modelKey({ provider: provider.id, model: item.id }) }, item.name === item.id ? item.id : item.name + ' — ' + item.id))));
+      const profileRows = (rows, target) => rows.map((candidate, index) => {
+        const inPool = target === 'pool';
+        const set = (key, value) => editor.matchesView(viewToken) && editor.candidateRows(target)[index]?.id === candidate.id &&
+          editor.edit(next => { next.candidates[index][key] = value; }, target);
         const current = catalog?.find(candidate.provider, candidate.model);
         const options = catalogEfforts(current, t);
         const known = options.some(option => option.id === candidate.effort);
         const failed = catalogState.failures.some(failure => failure.id === candidate.provider);
         const missing = !current && !!candidate.provider && !!candidate.model;
         const modelPicker = h('label', { style: fieldStyle }, h('span', null, t('chooseModel')),
-          h('select', { style: inputStyle, 'aria-label': t('chooseModel'), disabled, value: candidate.provider && candidate.model ? modelKey(candidate) : '', onChange: event => catalog?.select(editor, index, event.target.value, candidate, viewToken) },
+          h('select', { style: inputStyle, 'aria-label': t('chooseModel'), disabled: disabled || catalogState.status !== 'ready', value: candidate.provider && candidate.model ? modelKey(candidate) : '', onChange: event => catalog?.select(editor, index, event.target.value, candidate, viewToken, target) },
             !candidate.provider && !candidate.model ? h('option', { value: '', disabled: true }, t('chooseModel')) : null,
             missing ? h('option', { value: modelKey(candidate), disabled: true }, candidate.provider + ' / ' + candidate.model) : null,
-            catalogState.groups.map(provider => h('optgroup', { key: provider.id, label: provider.name + ' (' + provider.id + ')', disabled: catalogState.status !== 'ready' || catalogState.failures.some(failure => failure.id === provider.id) },
-              provider.models.map(item => h('option', { key: item.id, value: modelKey({ provider: provider.id, model: item.id }) }, item.name === item.id ? item.id : item.name + ' — ' + item.id))))),
+            modelOptions),
           candidate.provider && candidate.model ? h('code', { style: { overflowWrap: 'anywhere', whiteSpace: 'normal' } }, candidate.provider + ' / ' + candidate.model) : null,
           missing ? h('span', { role: 'status' }, t(catalogState.status === 'ready' && !failed ? 'catalogMissing' : 'catalogUnverified')) : null);
         const effortPicker = h('label', { style: fieldStyle }, h('span', null, t('effort')),
-          h('select', { style: inputStyle, 'aria-label': t('effort'), value: candidate.effort === '' || candidate.effort === undefined ? '' : effortKey(candidate.effort), disabled: disabled || !current, onChange: event => catalog?.setEffort(editor, index, event.target.value, candidate, viewToken) },
+          h('select', { style: inputStyle, 'aria-label': t('effort'), value: candidate.effort === '' || candidate.effort === undefined ? '' : effortKey(candidate.effort), disabled: disabled || !current, onChange: event => catalog?.setEffort(editor, index, event.target.value, candidate, viewToken, target) },
             h('option', { value: '', disabled: true }, t('chooseEffort')),
             !known && candidate.effort !== '' && candidate.effort !== undefined ? h('option', { value: effortKey(candidate.effort), disabled: true }, String(candidate.effort) + ' — ' + t('unknownEffort')) : null,
             options.map(option => h('option', { key: effortKey(option.id), value: effortKey(option.id) }, option.name + (option.id === null ? '' : ' (' + option.id + ')')))),
           candidate.effort === '' || candidate.effort === undefined ? h('span', { role: 'status' }, t('effortRequired')) : null,
           options.some(option => option.id === null) ? h('span', { role: 'status' }, t('noReasoning')) : null);
-        const newCandidate = named && !persistedIds.has(candidate.id);
-        const shared = sharedById.get(candidate.id) ?? candidate;
-        const panelTitle = h('span', null, h('strong', null, shared.name || shared.id), ' · ', profileLabel(candidate, t) || t('chooseModel'));
-        const remove = () => editor.matchesView(viewToken) && (named ? editor.removeCandidate(candidate.id) : edit(next => {
-          if (next.candidates[index]?.id === candidate.id) next.candidates.splice(index, 1);
-        }));
-        const defaultIn = named ? defaultOwners.get(candidate.id) : undefined;
-        return disclosure(panelTitle, [
-          newCandidate || !named ? input(named ? 'poolName' : 'name', candidate.name, value => set('name', value), 'text', disabled, 120) : null,
-          newCandidate ? note(t('poolNameHelp')) : null,
+        const isDefault = !inPool && candidate.id === ui.defaultCandidateId;
+        const title = candidate.name || t(inPool ? 'addPoolCandidate' : 'addCandidate');
+        const label = h('span', { style: { overflowWrap: 'anywhere' } }, h('strong', null, title), ' · ', profileLabel(candidate, t) || t('chooseModel'),
+          isDefault ? h('span', { style: { ...badgeStyle, marginInlineStart: 8 } }, t('presetDefaultBadge')) : null);
+        const remove = () => editor.matchesView(viewToken) && editor.removeCandidate(candidate.id, target);
+        return disclosure(label, [
           grid([modelPicker, effortPicker]),
+          input(inPool ? 'poolName' : 'name', candidate.name, value => set('name', value), 'text', disabled, 120),
+          !inPool ? input('description', candidate.description, value => set('description', value), 'text', disabled, 1000) : null,
           h('code', { 'aria-label': t('id'), style: { ...mutedStyle, whiteSpace: 'normal' } }, t('id') + ': ' + candidate.id),
-          !named ? input('description', candidate.description, value => set('description', value), 'text', disabled, 1000) : null,
-          h('div', null, button('remove', remove, disabled || !!defaultIn)),
-          defaultIn ? note(t('poolDefaultInUse') + ' ' + defaultIn.join(' · ')) : null
-        ], { key: candidate.id, open: newCandidate || !candidate.model ? true : undefined, [named ? 'data-pool-candidate' : 'data-candidate']: candidate.id });
+          h('div', null, button('remove', remove, disabled)), isDefault ? note(t('removeDefaultHelp')) : null
+        ], { key: (inPool ? 'pool:' : activeId + ':') + candidate.id, ref: candidate.model ? undefined : openNewProfile,
+          [inPool ? 'data-pool-candidate' : 'data-candidate']: candidate.id });
       });
-      const roleRows = named ? ui.candidates.map((candidate, index) => {
-        const set = (key, value) => edit(next => { if (next.candidates[index]?.id === candidate.id) next.candidates[index][key] = value; });
-        return h('div', { key: candidate.id, 'data-candidate': candidate.id, style: { ...stackStyle, gap: 8, borderTop: BORDER, paddingTop: 12 } },
-          note(profileLabel(candidate, t) || candidate.id),
-          grid([input('name', candidate.name, value => set('name', value), 'text', disabled, 120),
-            input('description', candidate.description, value => set('description', value), 'text', disabled, 1000)]));
-      }) : [];
+      const pool = state.configSet.candidates;
+      const poolRows = profileRows(pool, 'pool'), presetRows = profileRows(ui.candidates, 'preset');
       const panelProps = key => ({ 'data-workspace-panel': key, hidden: panel !== key, style: { ...cardStyle, display: panel === key ? undefined : 'none' } });
-      const queuedDraft = generation?.status === 'ready' && generation.target?.id === activeId && generation.target.named === named;
+      const queuedDraft = generation?.status === 'ready' && generation.target?.id === activeId;
       const availablePanels = [['details', 'presetDetails'], ['pool', 'availableModels'], ...(generator && catalog ? [['draft', 'draftTab']] : [])];
       const needsReload = state.dirty && !state.receiptUnverified || state.connectionReset;
-      const saveStatus = state.saving ? 'saving' : state.savedButNotLive ? 'savedButNotLive' : state.error || state.conflicted ? 'autosaveFailed' : state.dirty ? validDraft(ui) ? 'autosavePending' : 'autosaveIncomplete' : state.saved ? 'saved' : 'autosave';
+      const saveStatus = state.saving ? 'saving' : state.savedButNotLive ? 'savedButNotLive' : state.error || state.conflicted ? 'autosaveFailed' : state.dirty ? editor.draftComplete() ? 'autosavePending' : 'autosaveIncomplete' : state.saved ? 'saved' : 'autosave';
       return h('section', { 'data-router-workspace': true, style: { ...stackStyle, gap: 12, color: 'var(--dsw-alias-label-primary, inherit)', padding: '12px 0', maxWidth: '100%', lineHeight: 1.55, fontSize: 14 } },
         h('style', null, `
           [data-router-workspace] details:not([open]) > div { display: none; }
@@ -1397,7 +1399,7 @@ window.__ModuleLoader__.load({
           h('div', { style: { ...rowStyle, justifyContent: 'space-between' } },
             note(t(saveStatus), { role: 'status', 'aria-label': t('workspaceStatus'), 'aria-live': 'polite', 'aria-atomic': true }),
             h('div', { style: rowStyle },
-              state.error && state.dirty && !state.receiptUnverified && !state.connectionReset && !state.conflicted ? button('retry', () => editor.matchesView(viewToken) && editor.save(), disabled || !validDraft(ui)) : null,
+              state.error && state.dirty && !state.receiptUnverified && !state.connectionReset && !state.conflicted ? button('retry', () => editor.matchesView(viewToken) && editor.save(), disabled || !editor.draftComplete()) : null,
               button(needsReload ? 'cancel' : 'refresh', () => editor.matchesView(viewToken, false) && editor.reload(), state.saving || state.reloading || state.generatedBusy))),
           (state.receiptUnverified || state.savedButNotLive || state.error && state.dirty) ? note(t('configNotConfirmed'), { role: 'status' }) : null,
           state.conflicted ? note(t('conflict'), { role: 'alert' }) : null,
@@ -1405,21 +1407,23 @@ window.__ModuleLoader__.load({
         h('nav', { 'aria-label': t('workspaceNav'), style: { ...rowStyle, alignItems: 'stretch' } }, availablePanels.map(([key, label]) =>
           h('button', { key, type: 'button', 'data-workspace-nav': key, 'aria-pressed': panel === key, style: {
             ...buttonStyle, background: panel === key ? ACTIVE : 'transparent', borderColor: panel === key ? 'currentColor' : 'transparent', fontWeight: panel === key ? 650 : 500
-          }, onClick: () => setPanel(key) }, t(label), key === 'pool' && ui.candidates.length ? ' · ' + ui.candidates.length : null,
+          }, onClick: () => setPanel(key) }, t(label), key === 'pool' && pool.length ? ' · ' + pool.length : null,
             key === 'draft' && queuedDraft ? h('span', { style: { ...badgeStyle, marginInlineStart: 8 } }, t('draftPendingBadge')) : null))),
         h('section', { ...panelProps('details'), 'aria-label': t('presetDetails') },
-          h('div', { style: stackStyle }, panelHeading(t('presetDetails'), named ? t('presetScope') : null, t(named ? 'presetDetailsHelp' : 'legacyDetailsHelp')), defaultPicker,
-            !ui.candidates.length ? h('div', null, note(t('poolEmpty')), button('availableModels', () => setPanel('pool'))) : null,
-            roleRows.length ? disclosure(t('editRoles') + ' · ' + roleRows.length, roleRows, { key: activeId, 'data-manual-editor': true }) : null)),
-        h('section', { ...panelProps('pool'), 'data-shared-pool': named || undefined, 'aria-label': t('availableModels') },
-          h('div', { style: stackStyle }, panelHeading(t('availableModels'), named ? t('sharedScope') : null, t(named ? 'sharedPoolHelp' : 'legacyPoolHelp')),
+          h('div', { style: stackStyle, 'data-manual-editor': true }, panelHeading(t('presetDetails'), t('presetScope'), t('presetDetailsHelp')), defaultPicker,
             h(CatalogPanel, { catalog, blocked: state.generatedBusy, t }),
-            h('div', { style: { ...rowStyle, justifyContent: 'space-between' } }, h('h4', { style: headingStyle }, t('candidates'), ' · ' + poolRows.length),
-              button('addCandidate', () => editor.matchesView(viewToken) && editor.addCandidate(), disabled || ui.candidates.length >= 128, true)),
-            poolRows.length ? poolRows : note(t('noCandidates')),
+            h('div', { style: { ...rowStyle, justifyContent: 'space-between' } }, h('h4', { style: headingStyle }, t('candidates'), ' · ' + presetRows.length),
+              button('addCandidate', () => editor.matchesView(viewToken) && editor.addCandidate(), disabled || presetRows.length >= 128, true)),
+            presetRows.length ? presetRows : note(t('noCandidates')),
             disclosure(t('advanced'), [input('enabled', ui.enabled, value => edit(next => { next.enabled = value; }), 'checkbox'),
               group(t('limits'), [grid(['maxPendingStarts','maxActivePerModel','maxCreationsPerParent','metadataTimeoutMs'].map(key => input(key, ui.limits[key], value => edit(next => { next.limits[key] = value; }), 'number')))]),
-              note(t('authority')), note(t('executionEvidence'))], { 'data-manual-editor': named ? undefined : true }))),
+              note(t('authority')), note(t('executionEvidence'))]))),
+        h('section', { ...panelProps('pool'), 'data-shared-pool': true, 'aria-label': t('availableModels') },
+          h('div', { style: stackStyle }, panelHeading(t('availableModels'), t('sharedScope'), t('sharedPoolHelp')),
+            h(CatalogPanel, { catalog, blocked: state.generatedBusy, t }),
+            h('div', { style: { ...rowStyle, justifyContent: 'space-between' } }, h('h4', { style: headingStyle }, t('poolProfiles'), ' · ' + poolRows.length),
+              button('addPoolCandidate', () => editor.matchesView(viewToken) && editor.addCandidate('pool'), disabled || poolRows.length >= 128, true)),
+            poolRows.length ? poolRows : note(t('poolEmpty')))),
         generator && catalog ? h('section', { ...panelProps('draft'), 'aria-label': t('draftTab') }, h(DraftWizard, { generator, editor, catalog, t, goToPool: () => setPanel('pool') })) : null);
     }
 
@@ -1472,6 +1476,6 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.slots.inject(name, () => ctx.slots.register({ name, key }, component)), 'delegation-router: ' + name);
       }
     }
-    return { inject: ['slots', 'locale', 'configForms', 'remote', 'remote.settings', 'remote.session'], apply, draftRemoteDescriptors, catalogRemoteDescriptors, CatalogPanel, RouterEditor, RouterPage, DraftGenerator, DraftWizard, routeKey, ModelCatalog, normalizeCatalog, modelKey, catalogEfforts, effortKey, CATALOG_EVENTS, emptyDraft, projectConfigSet, validConfigSets, ConfigSetsPanel, draftFrom, normalizeAckUi, validDraft, dictionaries: { zh, en } };
+    return { inject: ['slots', 'locale', 'configForms', 'remote', 'remote.settings', 'remote.session'], apply, draftRemoteDescriptors, catalogRemoteDescriptors, CatalogPanel, RouterEditor, RouterPage, DraftGenerator, DraftWizard, routeKey, ModelCatalog, normalizeCatalog, modelKey, catalogEfforts, effortKey, CATALOG_EVENTS, emptyDraft, projectConfigSet, validConfigSets, ConfigSetsPanel, configSetFrom, normalizeAckUi, validDraft, dictionaries: { zh, en } };
   }
 });
