@@ -35,7 +35,7 @@
 
 ## 复跑证据与交付边界
 
-- 宿主改动在源码仓库中单独交付，不随插件安装包分发：`patches/dsh-0.2.2-rc.5-native-model-routing.patch`。已用发行基线的独立 Git 索引验证 `git apply --cached --check`；补丁不面向安装目录。
+- 宿主改动在源码仓库中单独交付，不随插件安装包分发：`patches/dsh-0.2.2-rc.5-native-model-routing.patch`。已用发行基线的独立 Git 索引验证 `git apply --cached --check`；补丁不面向安装目录。进行完整 Windows Desktop 源码构建时，在主补丁后再应用源码仓库的 `patches/dsh-0.2.2-rc.5-host-build-test-errata.patch`；它只修正两处测试类型，不改变运行时代码。
 - 源码仓库的 `scripts/host-fixtures/` 提供隔离复跑入口；集成验收 **4/4**；两套预设各经三个入口创建，逐一核对 MockAdapter 的首请求、JSONL 的首条子自有请求头、SessionQuery 和插件审计。fork 保留已完成的父回合，不带入在途父回合；继承的模型记录不会覆盖选档。关闭时恢复原生路由，未授权、歧义或重复调用不会产生额外创建。
 - 插件单测 **431/431**，静态检查和包清单通过；隔离宿主五组针对性测试 **429/429**、三个目标包类型检查通过；Team 基线 **42/42**；未打补丁的本机桌面运行时做了 **4/4** 个离线兼容性契约检查。
 - 未加载真实 Profile、连接外部模型服务、打包安装或运行桌面 GUI 回归，也未运行宿主仓库全量测试。

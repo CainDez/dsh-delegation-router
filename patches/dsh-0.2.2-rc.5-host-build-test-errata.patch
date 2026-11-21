@@ -1,0 +1,27 @@
+diff --git a/packages/core/tools/tests/tools.spec.ts b/packages/core/tools/tests/tools.spec.ts
+index 691c2441b28de792819b31fc79316cc2eec38f33..66e3c880cf78dd2946d2ec319c1aa3d080b35ff5 100644
+--- a/packages/core/tools/tests/tools.spec.ts
++++ b/packages/core/tools/tests/tools.spec.ts
+@@ -3182,7 +3182,8 @@ it('settles every unowned call when cancellation precedes the batch', async () =
+   try {
+     let invoked = false
+     ctx.tools.register(defineTool({
+-      ...echoTool,
++      name: echoTool.name,
++      description: echoTool.description,
+       parameters: {},
+       output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+       async execute() { invoked = true; return 'unexpected' },
+diff --git a/packages/subagent/tool-subagent/tests/tool-subagent.spec.ts b/packages/subagent/tool-subagent/tests/tool-subagent.spec.ts
+index 0a4fef55d8f5d7bc02d6a95bf50354f694afb64f..5745f19614d594b0bef8e08280fee5f2270ddea1 100644
+--- a/packages/subagent/tool-subagent/tests/tool-subagent.spec.ts
++++ b/packages/subagent/tool-subagent/tests/tool-subagent.spec.ts
+@@ -726,7 +726,7 @@ describe('dsh-tool-subagent local activation', () => {
+     const accepted = vi.fn((childId: string) => {
+       phases.push('accepted')
+       const catalog = ctx.sessionProjections.snapshot(parent.session).values.subagentCatalog
+-      expect(catalog?.find(entry => entry.name === 'named-review')?.id).toBe(childId)
++      expect(catalog?.find(entry => entry.mode === 'continuable' && entry.name === 'named-review')?.id).toBe(childId)
+     })
+     const unknown = vi.fn()
+     ctx.subagents.registerModelRouteResolver(async input => {
