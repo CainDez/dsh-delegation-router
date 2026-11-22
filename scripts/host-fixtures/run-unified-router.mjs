@@ -3,9 +3,11 @@ import { cpSync, copyFileSync, existsSync, mkdtempSync, realpathSync, rmSync } f
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const [hostInput, ...vitestArgs] = process.argv.slice(2);
+const [hostInput, ...args] = process.argv.slice(2);
+const mode = args[0] === '--stock' ? 'stock' : 'patched';
+const vitestArgs = mode === 'stock' ? args.slice(1) : args;
 if (!hostInput) {
-  console.error('Usage: node scripts/host-fixtures/run-unified-router.mjs <isolated-dsh-source-worktree> [Vitest flags]');
+  console.error('Usage: node scripts/host-fixtures/run-unified-router.mjs <isolated-dsh-source-worktree> [--stock] [Vitest flags]');
   process.exit(2);
 }
 const host = realpathSync(resolve(hostInput));
@@ -28,7 +30,7 @@ try {
   const result = spawnSync(process.execPath, [vitest, 'run', '--config', join(staged, 'unified-router.vitest.config.ts'), ...vitestArgs], {
     cwd: host,
     stdio: 'inherit',
-    env: { ...process.env, NODE_OPTIONS: '' },
+    env: { ...process.env, NODE_OPTIONS: '', DSH_DELEGATION_FIXTURE_MODE: mode },
   });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;

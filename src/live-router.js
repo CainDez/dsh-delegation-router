@@ -54,7 +54,7 @@ export class LiveRouter {
       return runtime;
     }catch(error){if(fresh){this.journal.close();this.journal=undefined;this.auditFile=undefined;}throw error;}
   }
-  async prepareNative(parent,request,exec,entry){
+  async prepareNative(parent,request,exec,entry,policyRevision){
     const validCallId=typeof exec.callId==='string'&&!!exec.callId&&exec.callId.length<=500;
     const key=validCallId?parent.id+'\0'+exec.callId:undefined;
     if(key&&this.nativeStarts.has(key))fail('CALL_ID_REUSE','Native call already submitted; inspect audit evidence before creating a new child');
@@ -66,7 +66,8 @@ export class LiveRouter {
     try{
       const lease=await runtime.prepareNative(parent,{
         prompt:exec.arguments?.prompt,description:exec.arguments?.description,
-        ...(candidateId===undefined?{}:{candidate_id:candidateId})
+        ...(candidateId===undefined?{}:{candidate_id:candidateId}),
+        ...(policyRevision===undefined?{}:{policy_revision:policyRevision})
       },exec,entry);
       return Object.freeze({...lease,beforeStart:()=>{
         if(this.nativeStarts.has(key))fail('CALL_ID_REUSE','Native call already submitted');

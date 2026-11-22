@@ -4,6 +4,7 @@ import { ToolExecutionPipeline } from '@deepseek-ai/dsh-tools/pipeline';
 import { isAbsolute, join } from 'node:path';
 import { isVolatile } from '@deepseek-ai/cosmokit';
 import { LiveRouter } from './live-router.js';
+import { normalizeRequest } from './runtime.js';
 import { RouterConfig, compilePluginConfig } from './ui-config.js';
 import { readStoredDraftPool } from './config-sets.js';
 import { FileJournal } from './journal.js';
@@ -116,6 +117,7 @@ export class SubagentRouterService extends Service {
     const authorizationOf=createAuthorizationReader(handle);
     const readAuthorization=parent=>{this.assertLiveParent(parent);return authorizationOf(parent);};
     const routedTokens=new Set();
+    const forkCalls=new Map();
     const invokeNative=createNativeInvoker(this.ctx,pipeline);
     const sessionReaders={getAgent:id=>this.ctx.agents.get(id),getSession:id=>this.ctx.get('sessions')?.get(id)};
     const {readChildRoute,readChildOwner,readCompletion}=createChildReaders({observeSession:(id,options)=>this.ctx.sessionQuery.observeSession(id,options)});
@@ -138,13 +140,24 @@ export class SubagentRouterService extends Service {
     if(this.policy.enabled)this.manager.ensure();
     this.nativeRouteResolverAvailable=typeof this.ctx.subagents?.registerModelRouteResolver==='function';
     if(this.nativeRouteResolverAvailable) {
-      this.ctx.effect(()=>this.ctx.subagents.registerModelRouteResolver(({parent,toolName,backend,exec,request})=>{
+      this.ctx.effect(()=>this.ctx.subagents.registerModelRouteResolver(async ({parent,toolName,backend,exec,request})=>{
         if((toolName!=='subagent'||backend!=='spawn')&&(toolName!=='subagent_fork'||backend!=='fork'))return undefined;
         if(exec?.parent!==undefined&&routedTokens.has(exec.parent))return undefined;
         this.assertLiveParent(parent);
         if(exec?.agent!==parent||exec.name!==toolName||typeof exec.token!=='symbol')fail('HOST_EXECUTION_REQUIRED','Exact native execution and parent identity are required');
         assertActive(exec.signal);
-        return this.manager.prepareNative(parent,request,exec,toolName);
+        const fork=forkCalls.get(exec.parent);
+        if(!fork)return this.manager.prepareNative(parent,request,exec,toolName);
+        if(toolName!=='subagent_fork'||parent!==fork.parent||exec.callId!==fork.callId||request?.candidate_id!==fork.candidateId||fork.binding) {
+          fail('NATIVE_FORK_BINDING_CHANGED','Prepared native fork does not match the routed fork call');
+        }
+        // Bind admission to the exact nested token and preserve default selection
+        // in the audit, even though the native call carries a fail-closed candidate ID.
+        fork.binding={token:exec.token};
+        const lease=await this.manager.prepareNative(parent,fork.explicit?request:{},exec,toolName,fork.revision);
+        if(!lease)fail('ROUTER_DISABLED','Fork routing was disabled before native approval');
+        fork.binding.lease=lease;
+        return Object.freeze({...lease,accepted:childId=>{lease.accepted(childId);fork.childId=childId;}});
       }),'delegationRouter.nativeRoutes');
     }
     this.ctx.on('internal/config',(fiber,next)=>{
@@ -226,6 +239,46 @@ export class SubagentRouterService extends Service {
         return this.runWithParentEvidence(args, exec);
       }
     }), { when: rootWhen });
+    if(this.nativeRouteResolverAvailable) this.ctx.tools.register(defineTool({
+      name: 'routed_subagent_fork',
+      description: 'Create a real native fork using the selected or default candidate, inheriting completed parent turns but not the current in-flight turn. Uses the admitted subagent_fork with native authorization and approval. Do not retry an unknown result or substitute a fresh child.',
+      parameters: {...requestParameters,
+        prompt: {...requestParameters.prompt, description:'Task for the fork. It sees completed parent turns; include any needed details from the current turn.'},
+        cwd: {type:'string',description:'Native initial child working directory.'}},
+      output,
+      execute: async (args,exec) => {
+        this.assertRoot(exec.agent); assertActive(exec.signal);
+        if(typeof exec.token!=='symbol'||typeof exec.callId!=='string'||!exec.callId||exec.callId.length>493||!exec.toolSet) {
+          fail('HOST_EXECUTION_REQUIRED','A prepared parent tool execution with a bounded call ID is required');
+        }
+        const request=normalizeRequest(args);
+        const {config,revision}=this.manager.snapshot();
+        if(!config.policy.enabled)fail('ROUTER_DISABLED','Child router is disabled');
+        if(request.policy_revision!==undefined&&request.policy_revision!==revision)fail('STALE_POLICY','Read delegation_routes again');
+        if(forkCalls.has(exec.token))fail('CALL_ID_REUSE','This routed fork is already being prepared');
+        const candidateId=request.candidate_id??config.policy.defaultCandidateId;
+        const fork={parent:exec.agent,callId:String(exec.callId)+':router',candidateId,revision,explicit:request.candidate_id!==undefined};
+        const before=parentRouteSnapshot(exec.agent);
+        forkCalls.set(exec.token,fork);
+        try {
+          const result=await invokeNative({prompt:request.prompt,description:request.description,candidate_id:candidateId,
+            ...(request.cwd===undefined?{}:{cwd:request.cwd})},exec,prepared=>{
+            const binding=fork.binding;
+            if(!binding?.lease||binding.token!==prepared.token)fail('NATIVE_FORK_ROUTING_UNAVAILABLE','The native resolver did not bind this fork; no child was created');
+            const lease=binding.lease, a=prepared.arguments;
+            if(a?.provider!==lease.provider||a?.model!==lease.model||a?.reasoning_effort!==(lease.effort??undefined)) {
+              fail('NATIVE_ROUTE_CHANGED','The fork arguments do not match the approved candidate route');
+            }
+            lease.assertCurrent();
+          },{fork:true});
+          if(fork.childId!==result.childId)fail('START_UNKNOWN','Fork receipt does not match an accepted routed child; inspect audit before retrying');
+          const after=parentRouteSnapshot(exec.agent);
+          const {provider,model,effort}=fork.binding.lease;
+          return {...result,candidateId,selected:{provider,model,effort},policy_revision:revision,
+            parentRouteBefore:before,parentRouteAfter:after,parentRouteUnchanged:JSON.stringify(before)===JSON.stringify(after)};
+        } finally { forkCalls.delete(exec.token); }
+      }
+    }),{when:rootWhen});
     // The browser settings RPC is optional; problems there must not take down routing.
     try { await mountDraftRemote(this, { readScopePool: () => readStoredDraftPool(this.readConfigSource().ui) }); }
     catch { hostDiagnostic(this.ctx, 'SETTINGS_RPC_UNAVAILABLE', 'Could not mount configuration RPCs; delegation routing is unchanged.'); }

@@ -52,13 +52,20 @@ async function activationIdentity(ctx, exec, value, previous, requestedName) {
 
 /** Same admitted definitions and staged pipeline as native/PTC; never calls execute directly. */
 export function createNativeInvoker(ctx, pipeline, logNested = async () => {}) {
-  return async (args, exec, beforeDispatch) => {
+  return async (args, exec, beforeDispatch, {fork=false}={}) => {
+    const toolName = fork ? 'subagent_fork' : 'subagent';
     if (!exec.agent || !exec.token || !exec.toolSet || !exec.signal || !exec.callId) rejectBeforeStart('HOST_EXECUTION_REQUIRED', 'A prepared parent tool execution is required');
-    const native = ctx.tools.executable('subagent', exec.agent, exec.toolSet);
-    if (!native) rejectBeforeStart('NATIVE_TOOL_UNAVAILABLE', 'Native subagent is not admitted; do not bypass Team or scope restrictions');
-    const schema = ctx.tools.schemas(exec.agent, exec.toolSet).find(value => value.name === 'subagent');
+    const native = ctx.tools.executable(toolName, exec.agent, exec.toolSet);
+    if (!native) rejectBeforeStart('NATIVE_TOOL_UNAVAILABLE', 'Native ' + toolName + ' is not admitted; do not bypass Team or scope restrictions');
+    const schema = ctx.tools.schemas(exec.agent, exec.toolSet).find(value => value.name === toolName);
     const params = schema?.parameters?.properties;
-    if (!params?.provider || !params?.model || !params?.reasoning_effort) rejectBeforeStart('NATIVE_MODEL_SELECTION_DISABLED', 'Native subagent does not expose explicit child routing');
+    if (fork) {
+      if (params?.candidate_id?.type !== 'string' || typeof native.prepareArguments !== 'function' || !beforeDispatch) {
+        rejectBeforeStart('NATIVE_FORK_ROUTING_UNAVAILABLE', 'Native fork cannot apply a candidate before approval; no child was created');
+      }
+    } else if (!params?.provider || !params?.model || !params?.reasoning_effort) {
+      rejectBeforeStart('NATIVE_MODEL_SELECTION_DISABLED', 'Native subagent does not expose explicit child routing');
+    }
     assertActivationOutput(native);
     if (typeof ctx.sessionQuery?.observeSession !== 'function') rejectBeforeStart('NATIVE_IDENTITY_UNAVAILABLE', 'Host Session observation is required to audit a native child');
     if (params.name?.type !== 'string') rejectBeforeStart('NATIVE_IDENTITY_UNAVAILABLE', 'Native tool must admit an exact requested child name');
@@ -68,7 +75,7 @@ export function createNativeInvoker(ctx, pipeline, logNested = async () => {}) {
     catch { rejectBeforeStart('NATIVE_IDENTITY_UNAVAILABLE', 'Host parent subagentCatalog cannot be read before dispatch'); }
     const input = {
       callId: String(exec.callId) + ':router', rootCallId: exec.rootCallId ?? exec.callId,
-      name: 'subagent', schema, arguments: {...args,name:requestedName}, agent: exec.agent, toolSet: exec.toolSet,
+      name: toolName, schema, arguments: {...args,name:requestedName}, agent: exec.agent, toolSet: exec.toolSet,
       parent: exec.token, signal: exec.signal
     };
     let dispatched = false;
@@ -78,14 +85,14 @@ export function createNativeInvoker(ctx, pipeline, logNested = async () => {}) {
       let outcome = prepared;
       if (prepared.kind === 'dispatch') {
         try {
-          const current = ctx.tools.executable('subagent', exec.agent, exec.toolSet);
+          const current = ctx.tools.executable(toolName, exec.agent, exec.toolSet);
           if (current !== native) rejectBeforeStart('NATIVE_TOOL_CHANGED', 'Native subagent definition changed during preparation; no child was created');
           assertActivationOutput(current);
           if (prepared.exec.arguments?.name !== requestedName) rejectBeforeStart('NATIVE_TOOL_CHANGED', 'Native preparation changed the bound child name');
-          for (const key of ['provider','model','reasoning_effort']) {
+          for (const key of fork ? ['candidate_id'] : ['provider','model','reasoning_effort']) {
             if (prepared.exec.arguments?.[key] !== args[key]) rejectBeforeStart('NATIVE_ROUTE_CHANGED','Native preparation changed the selected child route');
           }
-          const checked = beforeDispatch?.();
+          const checked = beforeDispatch?.(prepared.exec);
           if (checked && typeof checked.then === 'function') {
             void Promise.resolve(checked).catch(() => {});
             throw Object.assign(new Error('Routing admission hook must be synchronous'), { code: 'INVALID_ADMISSION_HOOK' });

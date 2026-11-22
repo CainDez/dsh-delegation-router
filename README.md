@@ -2,7 +2,9 @@
 
 主 Agent 已决定委派后，从当前预设的委派模型中选择一个固定档案，通过 DSH 原生 subagent 创建文本子会话。插件不决定是否委派、不切换主模型、不编排 Agent Teams，也不增加分类模型调用或评分系统。
 
-支持创建前选模接口的宿主可让原生 `subagent`、`subagent_fork`（包括 Agent Teams 新成员）和 `routed_subagent` 共用当前预设，统一由「启用创建路由」控制。`router_status.nativeRouteResolverAvailable` 显示宿主是否支持；接口缺失时只保留既有 `routed_subagent` 路由，不宣称已接管原生工具。参见[宿主接入和验证说明](<docs/unified-native-routing.md>)。
+**原版 DSH 不用打补丁也能按预设做普通委派。** 开启「启用创建路由」后，插件在主 Agent 的提示词里引导它优先用 `routed_subagent` 处理不要求继承历史的委派，包括新建普通 Team 成员。此入口最终仍由 DSH 创建原生子智能体。提示词不拦截原生调用：直接调用 `subagent` 或 `subagent_fork` 时，原版仍按 DSH 规则选模。
+
+支持创建前选模接口的宿主，才会让原生 `subagent`、`subagent_fork`（包括 Agent Teams 新成员）和 `routed_subagent` 共用当前预设。`router_status.nativeRouteResolverAvailable` 报告是否具备该能力。参见[宿主接入和验证说明](<docs/unified-native-routing.md>)。
 
 ## 配置
 
@@ -78,7 +80,8 @@ v5 顶层 `candidates` 是草稿池；各预设内的 `candidates` 是运行时�
 | 工具 | 职责 |
 | --- | --- |
 | `delegation_routes` | 列出授权范围内的候选、默认项及配置代际，不进行模型预检 |
-| `routed_subagent` | 按 `candidate_id` 创建子会话；省略时使用默认项，携带 `policy_revision` 防止过期选择 |
+| `routed_subagent` | 按 `candidate_id` 创建不自动继承历史的子会话；省略时使用默认项，携带 `policy_revision` 防止过期选择 |
+| `routed_subagent_fork` | 在支持创建前选模的宿主上，按相同预设创建原生 fork；继承已完成的父轮次，不含当前在途轮次 |
 | `router_status` | 只读当前父作用域的配置状态、创建回执及真实请求证据 |
 | `router_reconcile` | 用宿主持久证据结清已接受的子会话，不创建或恢复 Agent |
 
@@ -100,13 +103,13 @@ v5 顶层 `candidates` 是草稿池；各预设内的 `candidates` 是运行时�
 npm test
 npm run check
 npm pack --ignore-scripts
-node scripts/verify-pack.js ./dsh-delegation-router-0.13.0.tgz
+node scripts/verify-pack.js ./dsh-delegation-router-0.14.0.tgz
 ```
 
-以下命令从 GitHub Release 安装或更新到 `v0.13.0`。此地址固定到该版本，不会自动跟随以后的发布。
+以下命令从 GitHub Release 安装或更新到 `v0.14.0`。此地址固定到该版本，不会自动跟随以后的发布。
 
 ```sh
-dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.13.0/dsh-delegation-router-0.13.0.tgz
+dsh plugin --profile desktop add https://github.com/CainDez/dsh-delegation-router/releases/download/v0.14.0/dsh-delegation-router-0.14.0.tgz
 ```
 
 安装前检查未结委派并备份配置。

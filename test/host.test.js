@@ -584,10 +584,16 @@ test('plugin mounts optional bounded root guidance without acquiring runtime on 
   h.services.set('systemPrompt',{section:value=>{sections.push(value);return ()=>removed++;}});
   h.config.ui.enabled=false;
   const service=new RouterService(h.ctx,h.config);await service[init]();
-  assert.equal(sections.length,1);assert.equal(sections[0].text({agent:h.parent}),'');assert.equal(service.runtime,undefined);
+  const step={agent:h.parent,toolSet:h.exec.toolSet};
+  const schemas=h.ctx.tools.schemas;
+  h.ctx.tools.schemas=(agent,toolSet)=>{
+    assert.equal(agent,step.agent);assert.equal(toolSet,step.toolSet);
+    return [...schemas(),...['routed_subagent','delegation_routes'].filter(name=>h.definitions.get(name).options.when({agent})).map(name=>({name}))];
+  };
+  assert.equal(sections.length,1);assert.equal(sections[0].text(step),'');assert.equal(service.runtime,undefined);
   const status=await h.definitions.get('router_status').definition.execute({},h.exec);assert.deepEqual(status.decisions,[]);assert.equal(service.manager.journal,undefined);
-  h.config.ui.enabled=true;assert.match(sections[0].text({agent:h.parent}),/DELEGATION_ROUTER/);assert.equal(service.runtime,undefined);
-  assert.equal(sections[0].text({agent:{...h.parent}}),'');h.config.ui.enabled=false;assert.equal(sections[0].text({agent:h.parent}),'');
+  h.config.ui.enabled=true;assert.match(sections[0].text(step),/prefer routed_subagent over subagent/);assert.equal(service.runtime,undefined);
+  assert.equal(sections[0].text({...step,agent:{...h.parent}}),'');h.config.ui.enabled=false;assert.equal(sections[0].text(step),'');
   for(const dispose of h.effects)dispose();assert.equal(removed,1);
 });
 
